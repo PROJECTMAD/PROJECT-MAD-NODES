@@ -28,7 +28,7 @@ Documentation = "https://github.com/PROJECTMAD/PROJECT-MAD-NODES/wiki"
 "Bug Tracker" = "https://github.com/PROJECTMAD/PROJECT-MAD-NODES/issues"
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "projectmad"
 DisplayName = "PROJECT-MAD-NODES"
 Icon = ""
 includes = [] 
