@@ -3,66 +3,82 @@
 
 ## Multi Scheduled LoRA Loader
 
-To apply the scheduled strengths to CLIP, you need to connect it to the **Set CLIP Hooks** node (currently a ComfyUI Beta feature).
+### 1. Connection & Setup (Required)
+This node outputs **HOOKS**, which must be applied to your CLIP model using ComfyUI's internal hook system.
 
-*> **Note:** This setup is specific to CLIP. If you are not using a CLIP encoder, you only need to utilize the `HOOKS` output with your compatible model patcher.*
-
-**Connection Steps:**
-
+**Steps:**
 1.  Add a **Set CLIP Hooks** node to your workflow.
 2.  Connect your source `CLIP` (e.g., from *Load Checkpoint*) to the `clip` input.
 3.  Connect the `HOOKS` output from the **Multi Scheduled LoRA Loader** to the `hooks` input.
 4.  Connect the resulting `CLIP` output to your **CLIP Text Encode (Prompt)** nodes.
 
-**Configuration:**
+*> **Note:** If you are not using a CLIP encoder, you can utilize the `HOOKS` output with any compatible model patcher that accepts hooks.*
 
-*   **apply_to_conds:** Set this to `True` to ensure the schedule applies correctly.
-*   **schedule_clip:** This value is ignored/overridden by the input hooks, so it can be left at default.
+### 2. Configuration (Important)
+To ensure your curves actually affect the generation, you must configure the **Set CLIP Hooks** node correctly:
+
+*   **apply_to_conds (on Set CLIP Hooks):** Must be `True`. This enables the Model strength scheduling.
+*   **schedule_clip (on Set CLIP Hooks):** Set to `True` if you want the CLIP strength to change over time. If `False`, it may ignore the CLIP curve or use a static value.
 
 <details>
-<summary><strong>Preview</strong></summary>
+<summary><strong>Connection Preview</strong></summary>
 <a href="../assets/multi_scheduled_lora_loader_image_001.png"><img src="../assets/multi_scheduled_lora_loader_image_001.png" width="1920"></a>
 </details>
 
 <br>
 
-**Curve Editor Tips:**
-
-1.  Click the "Open Multi-LoRA Editor" button to open a popup window where you can visually draw your schedules.
-2.  Add as many LoRAs as you need to the list. The editor handles them all in one view.
-*  Model Strength and CLIP Strength curves are tied together (represented by a single curve), however you can set different values for each.
-*  Remember to always back up your schedules, most reliable way is to save `schedule_string` output somewhere. If you ever need to revert back to the old configuration, you can do so by plugging in the saved `schedule_string` into the node.
-*  *ESC* or clicking outside the editor will close the window without saving it.
-
-<details>
-<summary><strong>Preview</strong></summary>
-<a href="../assets/multi_scheduled_lora_loader_image_002.png"><img src="../assets/multi_scheduled_lora_loader_image_002.png" width="1920"></a>
-</details>
+### 3. Using the Curve Editor
+1.  Click **"Open Multi-LoRA Editor"** to launch the visual interface.
+2.  **Add LoRAs:** Add as many LoRAs as needed; the editor handles them in a unified timeline.
+3.  **Draw Curves:**
+    *   **Left Click:** Add keyframe / Drag point.
+    *   **Double Click:** Add keyframe.
+    *   **Right Click / Drag:** Pan the view.
+    *   **Shift + Drag:** Toggle snapping (default is snap-to-grid).
+4.  **Model vs CLIP:** The curve represents both strengths visually, but you can set independent values in the sidebar.
+5.  **History:** Use Undo/Redo (Ctrl+Z/Ctrl+Y) or the History button to revert changes.
 
 <br>
 
-**Wish I hadn't thought of this:**
+### 4. Advanced: External String Syntax
+If you prefer to bypass the visual editor or generate schedules programmatically, you can input a string into the `schedule_string` input.
 
-*  **Extending Nodes:** You can chain multiple nodes together (please don't 😱) but remember that combined hooks have no way of showing LoRAs from the `previous_hooks` input. It still correctly affects generation process, but if you want to see updated `schedule_string` output you need to plug both `previous_hooks` and `schedule_string` into the node (sanity check 🥹).
+**Format:**
+```text
+<lora:filename.safetensors:model_strength:clip_strength:keyframe_data>
+```
 
-<details>
-<summary><strong>Preview</strong></summary>
-<br>
-<b>Clean and simple:</b>
-<br>
-<a href="../assets/multi_scheduled_lora_loader_image_003.png"><img src="../assets/multi_scheduled_lora_loader_image_003.png" width="1920"></a>
-<br>
-<br>
-<b>Extending nodes (😭🙏):</b>
-<br>
-<a href="../assets/multi_scheduled_lora_loader_image_004.png"><img src="../assets/multi_scheduled_lora_loader_image_004.png" width="1920"></a>
-</details>
+**Examples:**
+*   **Simple (Static):** `<lora:my_style.safetensors:0.8:1.0>`
+*   **With Keyframes:** `<lora:my_style.safetensors:1.0:1.0:0.0,0.0;0.5,1.0;1.0,0.0>`
+    *   *Format:* `percent,strength;percent,strength`
+
+*> **Note:** If a valid string is detected in `schedule_string` and the internal editor has no active LoRAs, the node switches to **External Mode** and ignores the internal editor configuration. Otherwise it will prompt you to optionally import the schedule.*
 
 <br>
+
+### 5. Troubleshooting
+*   **Gray/Empty output image:**
+    *   Ensure `schedule_clip` is `True` on the **Set CLIP Hooks** node.
+    *   Ensure you have at least one active LoRA.
+    *   Check if your curves are set to 0 strength for the entire duration.
+*   **Import overwrote the schedule:** If you connect an external string, the node may ask to import it. You can Undo (Ctrl+Z) inside the editor if you accidentally overwrite your work.
+
+<br>
+
+---
 
 ## Visual Prompt Gallery (EXIF)
 
-You can't go wrong with this one.
+A visual container for your prompt inspiration.
+
+**How it works:**
+1.  **Drag & Drop:** Drag images from your computer onto the gallery area.
+2.  **Storage:** Images are saved to `ComfyUI/input/visual_gallery/`.
+3.  **Load Prompts:** **Left-Click** an image to select it and run workflow to instantly populate the `positive_prompt` and `negative_prompt` outputs with metadata extracted from the image.
+4.  **Context Menu:** **Right-Click** an image to:
+    *   View Fullscreen.
+    *   Remove the image from the gallery.
 
 <details>
 <summary><strong>Preview</strong></summary>
@@ -71,4 +87,4 @@ You can't go wrong with this one.
 
 <br>
 
-> Go back to the **[README](../readme.md)** section.
+> Go back to the **[README](../readme.md)**.

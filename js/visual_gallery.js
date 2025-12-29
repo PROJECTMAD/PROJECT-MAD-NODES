@@ -5,8 +5,6 @@ import { api } from "../../scripts/api.js";
  * ============================================================================
  * LIBRARY INITIALIZATION
  * ============================================================================
- * Dynamically loads the ExifReader library from a CDN if it's not already
- * present. This library is essential for extracting metadata from images.
  */
 
 if (!window.ExifReaderScriptLoaded) {
@@ -29,36 +27,57 @@ app.registerExtension({
                 this.bgcolor = "#000000";
 
                 this.setSize([400, 500]);
-                this.storedImages = []; 
+                this.storedImages = [];
                 this.metadataCache = new Map();
-                
+
                 this.galleryState = {
                     ratio: "square",
                 };
 
+                const VIEW_MODES = {
+                    square: {
+                        id: "square",
+                        label: "1:1",
+                        name: "SQUARE",
+                        minWidth: "clamp(120px, 25%, 300px)",
+                        ratio: "1 / 1"
+                    },
+                    landscape: {
+                        id: "landscape",
+                        label: "1.46:1",
+                        name: "LANDSCAPE",
+                        minWidth: "clamp(140px, 33%, 450px)",
+                        ratio: "1.46 / 1"
+                    },
+                    portrait: {
+                        id: "portrait",
+                        label: "0.68:1",
+                        name: "PORTRAIT",
+                        minWidth: "clamp(90px, 25%, 250px)",
+                        ratio: "0.68 / 1"
+                    }
+                };
+
                 const widgetNames = [
-                   "positive_prompt", "negative_prompt",
-                   "image_list", "current_image", "gallery_settings"
+                    "positive_prompt", "negative_prompt",
+                    "image_list", "current_image", "gallery_settings"
                 ];
-                 
+
                 const hideWidget = (w) => {
-                    w.type = "hidden"; 
+                    w.type = "hidden";
                     w.computeSize = () => [0, -4];
                     w.visible = false;
                 };
 
                 widgetNames.forEach(name => {
                     const w = this.widgets.find(x => x.name === name);
-                    if(w) hideWidget(w);
+                    if (w) hideWidget(w);
                 });
 
                 /*
                  * ============================================================================
                  * UI CONSTRUCTION
                  * ============================================================================
-                 * Builds the floating gallery window. This includes the main container,
-                 * the toolbar (with aspect ratio controls and clear button), the grid
-                 * area for thumbnails, and the empty state placeholder.
                  */
 
                 const container = document.createElement("div");
@@ -92,7 +111,7 @@ app.registerExtension({
                     flexShrink: "0",
                     gap: "10px"
                 });
-                 
+
                 const title = document.createElement("span");
                 title.innerText = "GALLERY";
                 title.style.fontWeight = "bold";
@@ -106,17 +125,11 @@ app.registerExtension({
                     justifyContent: "center"
                 });
 
-                const ratios = [
-                    { name: "SQUARE", id: "square", label: "1:1" },
-                    { name: "LANDSCAPE", id: "landscape", label: "1.46:1" },
-                    { name: "PORTRAIT", id: "portrait", label: "0.68:1" }
-                ];
-
                 this.ratioButtons = {};
 
-                ratios.forEach(r => {
+                Object.values(VIEW_MODES).forEach(mode => {
                     const btn = document.createElement("button");
-                    btn.innerText = r.name;
+                    btn.innerText = mode.name;
                     Object.assign(btn.style, {
                         background: "#222",
                         color: "#888",
@@ -127,10 +140,10 @@ app.registerExtension({
                         cursor: "pointer",
                         minWidth: "50px"
                     });
-                    
-                    btn.onclick = () => this.setAspectRatio(r.id);
-                    
-                    this.ratioButtons[r.id] = btn;
+
+                    btn.onclick = () => this.setAspectRatio(mode.id);
+
+                    this.ratioButtons[mode.id] = btn;
                     ratioGroup.appendChild(btn);
                 });
                 toolbar.appendChild(ratioGroup);
@@ -148,13 +161,13 @@ app.registerExtension({
                 });
                 clearBtn.onmouseover = () => clearBtn.style.background = "#444";
                 clearBtn.onmouseout = () => clearBtn.style.background = "#333";
-                 
+
                 clearBtn.onclick = () => {
                     this.galleryGrid.innerHTML = "";
                     this.storedImages = [];
                     this.metadataCache.clear();
                     this.updateWidgets({}, null);
-                    this.saveState(); 
+                    this.saveState();
                     this.showPlaceholder(true);
                 };
                 toolbar.appendChild(clearBtn);
@@ -176,7 +189,10 @@ app.registerExtension({
                     gap: "6px",
                     padding: "8px",
                     width: "100%",
-                    boxSizing: "border-box"
+                    boxSizing: "border-box",
+
+                    gridTemplateColumns: "repeat(auto-fill, minmax(var(--min-col, 120px), 1fr))",
+                    transition: "all 0.3s ease-in-out"
                 });
                 gridWrapper.appendChild(grid);
 
@@ -193,7 +209,7 @@ app.registerExtension({
                     textAlign: "center",
                     lineHeight: "1.5"
                 });
-                 
+
                 this.placeholder.innerHTML = `
                     <div style="font-size: 24px; margin-bottom: 10px;">📂</div>
                     <div style="font-size: 12px; font-weight: bold;">Drag & Drop Images</div>
@@ -205,46 +221,32 @@ app.registerExtension({
                     this.placeholder.style.display = show ? "flex" : "none";
                 };
 
-                this.setAspectRatio = (mode) => {
-                    this.galleryState.ratio = mode;
-                    
+                this.setAspectRatio = (modeId) => {
+                    this.galleryState.ratio = modeId;
+                    const config = VIEW_MODES[modeId];
+
                     Object.values(this.ratioButtons).forEach(b => {
                         b.style.background = "#222";
                         b.style.color = "#888";
                         b.style.borderColor = "#333";
                     });
-                    const active = this.ratioButtons[mode];
-                    if(active) {
+                    const active = this.ratioButtons[modeId];
+                    if (active) {
                         active.style.background = "#444";
                         active.style.color = "#fff";
                         active.style.borderColor = "#666";
                     }
 
-                    let minColWidth = "120px";
-                    let aspectRatio = "1 / 1";
-
-                    if (mode === "square") {
-                        minColWidth = "120px";
-                        aspectRatio = "1 / 1";
-                    } else if (mode === "landscape") {
-                        minColWidth = "140px";
-                        aspectRatio = "1.46 / 1";
-                    } else if (mode === "portrait") {
-                        minColWidth = "90px";
-                        aspectRatio = "0.68 / 1";
+                    if (config) {
+                        this.galleryGrid.style.setProperty("--min-col", config.minWidth);
+                        this.galleryGrid.style.setProperty("--item-ratio", config.ratio);
                     }
-
-                    this.galleryGrid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${minColWidth}, 1fr))`;
-                    
-                    Array.from(this.galleryGrid.children).forEach(child => {
-                        child.style.aspectRatio = aspectRatio;
-                    });
 
                     this.saveState();
                 };
 
                 const originalOnDrawForeground = this.onDrawForeground;
-                this.onDrawForeground = function(ctx) {
+                this.onDrawForeground = function (ctx) {
                     if (originalOnDrawForeground) originalOnDrawForeground.apply(this, arguments);
                     if (!this.galleryDiv) return;
                     if (!this.graph || this.flags.collapsed) {
@@ -253,13 +255,13 @@ app.registerExtension({
                     }
 
                     const ds = app.canvas.ds;
-                    const headerHeight = 65; 
-                     
+                    const headerHeight = 65;
+
                     const screenX = (this.pos[0] + ds.offset[0]) * ds.scale;
                     const screenY = (this.pos[1] + ds.offset[1]) * ds.scale + (headerHeight * ds.scale);
-                     
-                    if (screenX < -this.size[0]*ds.scale || screenX > document.body.clientWidth || 
-                        screenY < -this.size[1]*ds.scale || screenY > document.body.clientHeight) {
+
+                    if (screenX < -this.size[0] * ds.scale || screenX > document.body.clientWidth ||
+                        screenY < -this.size[1] * ds.scale || screenY > document.body.clientHeight) {
                         this.galleryDiv.style.display = "none";
                         return;
                     }
@@ -273,7 +275,7 @@ app.registerExtension({
                 };
 
                 const originalOnRemoved = this.onRemoved;
-                this.onRemoved = function() {
+                this.onRemoved = function () {
                     if (originalOnRemoved) originalOnRemoved.apply(this, arguments);
                     if (this.galleryDiv) {
                         this.galleryDiv.remove();
@@ -285,17 +287,15 @@ app.registerExtension({
                  * ============================================================================
                  * FILE HANDLING & UPLOAD
                  * ============================================================================
-                 * Manages drag-and-drop events. Uploads dropped images to the ComfyUI
-                 * server ("input/visual_gallery") and adds them to the local grid.
                  */
 
                 container.addEventListener("dragover", (e) => {
-                    e.preventDefault(); e.stopPropagation(); 
-                    gridWrapper.style.backgroundColor = "#1a1a1a"; 
-                });
-                container.addEventListener("dragleave", (e) => { 
                     e.preventDefault(); e.stopPropagation();
-                    gridWrapper.style.backgroundColor = "#0a0a0a"; 
+                    gridWrapper.style.backgroundColor = "#1a1a1a";
+                });
+                container.addEventListener("dragleave", (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    gridWrapper.style.backgroundColor = "#0a0a0a";
                 });
                 container.addEventListener("drop", async (e) => {
                     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
@@ -303,7 +303,7 @@ app.registerExtension({
                     this.showPlaceholder(false);
 
                     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
-                    if(files.length > 0) this.uploadAndProcessFiles(files);
+                    if (files.length > 0) this.uploadAndProcessFiles(files);
                 });
 
                 this.uploadAndProcessFiles = async (files) => {
@@ -319,8 +319,8 @@ app.registerExtension({
                                 method: "POST",
                                 body: formData
                             });
-                             
-                            if(resp.status === 200) {
+
+                            if (resp.status === 200) {
                                 const data = await resp.json();
                                 this.storedImages.push(data);
                                 this.addThumbnail(data);
@@ -334,61 +334,28 @@ app.registerExtension({
                  * ============================================================================
                  * METADATA EXTRACTION
                  * ============================================================================
-                 * Complex logic to parse generation data from image files.
-                 * Supports standard EXIF, ComfyUI workflow JSON (embedded in PNG),
-                 * and CivitAI-style metadata. It attempts to extract positive and
-                 * negative prompts to populate the node's outputs.
                  */
 
                 const decodeUserComment = (tag) => {
                     if (!tag) return "";
-                     
-                    if (typeof tag.description === 'string' && 
-                        tag.description !== "[Unicode encoded text]" && 
-                        !tag.description.startsWith("binary comment")) {
+                    if (typeof tag.description === 'string' && tag.description !== "[Unicode encoded text]" && !tag.description.startsWith("binary comment")) {
                         return tag.description.replace(/\0/g, '').trim();
                     }
-
                     if (tag.value && Array.isArray(tag.value)) {
                         const bytes = new Uint8Array(tag.value);
                         let payload = bytes;
-                        let encoding = "utf-8"; 
-
-                        if (bytes.length >= 8 &&
-                            bytes[0]===85 && bytes[1]===78 && bytes[2]===73 &&
-                            bytes[3]===67 && bytes[4]===79 && bytes[5]===68 &&
-                            bytes[6]===69 && bytes[7]===0) {
+                        let encoding = "utf-8";
+                        if (bytes.length >= 8 && bytes[0] === 85 && bytes[1] === 78 && bytes[2] === 73 && bytes[3] === 67 && bytes[4] === 79 && bytes[5] === 68 && bytes[6] === 69 && bytes[7] === 0) {
                             payload = bytes.slice(8);
                             encoding = "utf-16le";
-                        }
-                        else if (bytes.length >= 8 &&
-                            bytes[0]===65 && bytes[1]===83 && bytes[2]===67 &&
-                            bytes[3]===73 && bytes[4]===73 && bytes[5]===0) {
+                        } else if (bytes.length >= 8 && bytes[0] === 65 && bytes[1] === 83 && bytes[2] === 67 && bytes[3] === 73 && bytes[4] === 73 && bytes[5] === 0) {
                             payload = bytes.slice(8);
                             encoding = "utf-8";
                         }
-
                         try {
                             const decoder = new TextDecoder(encoding);
-                            let str = decoder.decode(payload).replace(/\0/g, '').trim();
-                            
-                            let highChars = 0;
-                            for(let i=0; i<Math.min(str.length, 100); i++) {
-                                if(str.charCodeAt(i) > 0x2E80) highChars++;
-                            }
-
-                            if (highChars > 20 && encoding === "utf-16le") {
-                                const beDecoder = new TextDecoder("utf-16be");
-                                const beStr = beDecoder.decode(payload).replace(/\0/g, '').trim();
-                                let highCharsBE = 0;
-                                for(let i=0; i<Math.min(beStr.length, 100); i++) {
-                                    if(beStr.charCodeAt(i) > 0x2E80) highCharsBE++;
-                                }
-                                if (highCharsBE < highChars) str = beStr;
-                            }
-
-                            return str;
-                        } catch(e) { console.error("Decode failed", e); }
+                            return decoder.decode(payload).replace(/\0/g, '').trim();
+                        } catch (e) { console.error("Decode failed", e); }
                     }
                     return "";
                 };
@@ -398,13 +365,10 @@ app.registerExtension({
                     let posEnd = text.length;
                     const negIdx = text.indexOf("Negative prompt:");
                     const stepsIdx = text.search(/Steps:\s*\d+/);
-
                     if (negIdx !== -1) posEnd = negIdx;
                     else if (stepsIdx !== -1) posEnd = stepsIdx;
-
                     const pos = text.substring(0, posEnd).trim();
                     if (pos && !metadata.positive_prompt) metadata.positive_prompt = pos;
-
                     if (negIdx !== -1) {
                         let negEnd = stepsIdx !== -1 ? stepsIdx : text.length;
                         const neg = text.substring(negIdx + 16, negEnd).trim();
@@ -417,7 +381,7 @@ app.registerExtension({
                         let extra = jsonObj.extraMetadata;
                         if (extra) {
                             if (typeof extra === 'string') {
-                                try { extra = JSON.parse(extra); } catch(e) { extra = null; }
+                                try { extra = JSON.parse(extra); } catch (e) { extra = null; }
                             }
                         }
                         if (!extra) extra = jsonObj;
@@ -457,21 +421,18 @@ app.registerExtension({
                                 } else { parseGenerationText(cleanUC, metadata); }
                             }
                         }
-
                         if (tags.parameters && tags.parameters.description) {
                             parseGenerationText(tags.parameters.description, metadata);
                         }
-
                         if (tags['sd-metadata'] && tags['sd-metadata'].description) {
                             try {
                                 const invokeData = JSON.parse(tags['sd-metadata'].description);
                                 parseCivitaiStructure(invokeData, metadata);
-                            } catch(e) {}
+                            } catch (e) { }
                         }
 
                         let comfyJson = null;
                         let isApiFormat = false;
-
                         if (tags.prompt && tags.prompt.description) {
                             comfyJson = tags.prompt.description;
                             isApiFormat = true;
@@ -548,11 +509,172 @@ app.registerExtension({
 
                 /*
                  * ============================================================================
+                 * CONTEXT MENU & ACTIONS
+                 * ============================================================================
+                 */
+
+                this.viewFullscreen = (imgInfo) => {
+                    const params = new URLSearchParams({
+                        filename: imgInfo.name,
+                        subfolder: imgInfo.subfolder,
+                        type: imgInfo.type
+                    });
+                    const url = `/view?${params.toString()}`;
+
+                    const overlay = document.createElement("div");
+                    Object.assign(overlay.style, {
+                        position: "fixed", top: "0", left: "0", width: "100vw", height: "100vh",
+                        backgroundColor: "rgba(0,0,0,0.9)", zIndex: "10000",
+                        display: "flex", justifyContent: "center", alignItems: "center",
+                        cursor: "default",
+                        userSelect: "none"
+                    });
+
+                    const img = document.createElement("img");
+                    img.src = url;
+                    Object.assign(img.style, {
+                        maxWidth: "95%", maxHeight: "95%", objectFit: "contain",
+                        boxShadow: "0 0 20px rgba(0,0,0,0.5)",
+                        cursor: "auto"
+                    });
+
+                    img.onclick = (e) => e.stopPropagation();
+
+                    const closeBtn = document.createElement("div");
+                    closeBtn.innerHTML = "&#10005;";
+                    Object.assign(closeBtn.style, {
+                        position: "absolute",
+                        top: "20px",
+                        right: "30px",
+                        color: "#fff",
+                        fontSize: "30px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        zIndex: "10001",
+                        fontFamily: "sans-serif",
+                        textShadow: "0 2px 4px rgba(0,0,0,0.8)",
+                        opacity: "0.7",
+                        transition: "opacity 0.2s ease"
+                    });
+
+                    closeBtn.onmouseover = () => closeBtn.style.opacity = "1";
+                    closeBtn.onmouseout = () => closeBtn.style.opacity = "0.7";
+
+                    const closeViewer = () => {
+                        document.removeEventListener("keydown", onKeyDown);
+                        overlay.remove();
+                    };
+
+                    const onKeyDown = (e) => {
+                        if (e.key === "Escape") {
+                            e.preventDefault();
+                            closeViewer();
+                        }
+                    };
+
+                    closeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        closeViewer();
+                    };
+
+                    overlay.onclick = (e) => {
+                        if (e.target === overlay) closeViewer();
+                    };
+
+                    document.addEventListener("keydown", onKeyDown);
+
+                    overlay.appendChild(img);
+                    overlay.appendChild(closeBtn);
+                    document.body.appendChild(overlay);
+                };
+
+                this.removeImage = (imgInfo, element) => {
+                    this.storedImages = this.storedImages.filter(i => i.name !== imgInfo.name);
+
+                    if (element) element.remove();
+
+                    const currentImgW = this.widgets.find(x => x.name === "current_image");
+                    if (currentImgW && currentImgW.value) {
+                        try {
+                            const current = JSON.parse(currentImgW.value);
+                            if (current.name === imgInfo.name) {
+                                currentImgW.value = "";
+                                this.updateWidgets({}, null);
+                            }
+                        } catch (e) { }
+                    }
+
+                    if (this.storedImages.length === 0) {
+                        this.showPlaceholder(true);
+                    }
+
+                    this.saveState();
+                };
+
+                this.createContextMenu = (e, imgInfo, element) => {
+                    e.preventDefault();
+
+                    const existing = document.getElementById("vpg-context-menu");
+                    if (existing) existing.remove();
+
+                    const menu = document.createElement("div");
+                    menu.id = "vpg-context-menu";
+                    Object.assign(menu.style, {
+                        position: "fixed",
+                        left: `${e.clientX}px`,
+                        top: `${e.clientY}px`,
+                        backgroundColor: "#222",
+                        border: "1px solid #444",
+                        borderRadius: "4px",
+                        padding: "4px 0",
+                        zIndex: "9999",
+                        boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
+                        minWidth: "150px",
+                        display: "flex",
+                        flexDirection: "column"
+                    });
+
+                    const createItem = (label, onClick, isDestructive = false) => {
+                        const item = document.createElement("div");
+                        item.innerText = label;
+                        Object.assign(item.style, {
+                            padding: "6px 12px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            color: isDestructive ? "#ff6b6b" : "#eee",
+                            transition: "background 0.1s"
+                        });
+                        item.onmouseover = () => item.style.backgroundColor = "#333";
+                        item.onmouseout = () => item.style.backgroundColor = "transparent";
+                        item.onclick = (evt) => {
+                            evt.stopPropagation();
+                            onClick();
+                            menu.remove();
+                        };
+                        return item;
+                    };
+
+                    menu.appendChild(createItem("View Fullscreen", () => this.viewFullscreen(imgInfo)));
+                    menu.appendChild(createItem("Remove Image", () => this.removeImage(imgInfo, element), true));
+
+                    document.body.appendChild(menu);
+
+                    const closeMenu = () => {
+                        menu.remove();
+                        document.removeEventListener("click", closeMenu);
+                        document.removeEventListener("contextmenu", closeMenu);
+                    };
+
+                    setTimeout(() => {
+                        document.addEventListener("click", closeMenu);
+                        document.addEventListener("contextmenu", closeMenu);
+                    }, 10);
+                };
+
+                /*
+                 * ============================================================================
                  * THUMBNAIL & SELECTION LOGIC
                  * ============================================================================
-                 * Creates visual elements for images and handles user interaction.
-                 * When an image is selected, it triggers metadata fetching and updates
-                 * the node's hidden widgets.
                  */
 
                 this.addThumbnail = (imgInfo) => {
@@ -561,13 +683,9 @@ app.registerExtension({
                         subfolder: imgInfo.subfolder,
                         type: imgInfo.type
                     });
-                     
+
                     const url = `/view?${params.toString()}`;
                     const item = document.createElement("div");
-                    
-                    let ar = "1 / 1";
-                    if(this.galleryState.ratio === "landscape") ar = "1.46 / 1";
-                    if(this.galleryState.ratio === "portrait") ar = "0.68 / 1";
 
                     Object.assign(item.style, {
                         position: "relative",
@@ -579,15 +697,20 @@ app.registerExtension({
                         backgroundSize: "cover",
                         backgroundPosition: "center",
                         transition: "all 0.15s ease-out",
-                        aspectRatio: ar,
+
+                        aspectRatio: "var(--item-ratio, 1/1)",
                         opacity: "0.7"
                     });
-                    
+
                     item.dataset.name = imgInfo.name;
+                    item.title = "Click to load Metadata"; 
 
                     item.onclick = async () => {
                         this.selectImage(item, imgInfo);
                     };
+                    item.addEventListener("contextmenu", (e) => {
+                        this.createContextMenu(e, imgInfo, item);
+                    });
 
                     this.galleryGrid.appendChild(item);
                 };
@@ -598,12 +721,12 @@ app.registerExtension({
                     Array.from(this.galleryGrid.children).forEach(c => {
                         c.style.borderColor = "#333";
                         c.style.boxShadow = "none";
-                        c.style.opacity = "0.7"; 
+                        c.style.opacity = "0.7";
                     });
 
                     itemElement.style.opacity = "1";
-                    itemElement.style.borderColor = "#00d2ff"; 
-                    itemElement.style.boxShadow = "0 0 10px rgba(0, 210, 255, 0.6), inset 0 0 5px rgba(0, 210, 255, 0.3)"; 
+                    itemElement.style.borderColor = "#00d2ff";
+                    itemElement.style.boxShadow = "0 0 10px rgba(0, 210, 255, 0.6), inset 0 0 5px rgba(0, 210, 255, 0.3)";
 
                     const metadata = await this.fetchMetadata(imgInfo);
                     itemElement.title = metadata.positive_prompt || "No Text Prompt Detected";
@@ -611,31 +734,28 @@ app.registerExtension({
                 };
 
                 this.updateWidgets = (meta, imgInfo) => {
-                   const map = {
-                       "positive_prompt": meta.positive_prompt || "",
-                       "negative_prompt": meta.negative_prompt || ""
-                   };
+                    const map = {
+                        "positive_prompt": meta.positive_prompt || "",
+                        "negative_prompt": meta.negative_prompt || ""
+                    };
 
-                   for (const [key, val] of Object.entries(map)) {
-                       const w = this.widgets.find(x => x.name === key);
-                       if(w) w.value = val;
-                   }
+                    for (const [key, val] of Object.entries(map)) {
+                        const w = this.widgets.find(x => x.name === key);
+                        if (w) w.value = val;
+                    }
 
-                   const imgW = this.widgets.find(x => x.name === "current_image");
-                   if(imgW) {
-                       imgW.value = imgInfo ? JSON.stringify({ name: imgInfo.name, subfolder: imgInfo.subfolder }) : "";
-                   }
+                    const imgW = this.widgets.find(x => x.name === "current_image");
+                    if (imgW) {
+                        imgW.value = imgInfo ? JSON.stringify({ name: imgInfo.name, subfolder: imgInfo.subfolder }) : "";
+                    }
 
-                   app.graph.setDirtyCanvas(true, true);
+                    app.graph.setDirtyCanvas(true, true);
                 };
 
                 /*
                  * ============================================================================
                  * STATE MANAGEMENT
                  * ============================================================================
-                 * Persists the gallery state (list of images, view settings) into
-                 * hidden widgets so that the gallery survives page reloads and
-                 * workflow saves.
                  */
 
                 this.saveState = () => {
@@ -668,7 +788,7 @@ app.registerExtension({
                             } else {
                                 this.setAspectRatio("square");
                             }
-                        } catch(e) { this.setAspectRatio("square"); }
+                        } catch (e) { this.setAspectRatio("square"); }
                     } else {
                         this.setAspectRatio("square");
                     }
@@ -688,7 +808,7 @@ app.registerExtension({
                                     }
                                 }
                             }
-                        } catch(e) {}
+                        } catch (e) { }
                     }
 
                 }, 100);

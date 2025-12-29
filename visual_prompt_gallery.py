@@ -20,9 +20,6 @@ class VisualPromptGallery:
     ============================================================================
     NODE DEFINITION
     ============================================================================
-    Defines the ComfyUI node interface for the Visual Prompt Gallery.
-    It accepts hidden string inputs for prompt data and image lists, which are
-    managed entirely by the custom JavaScript UI.
     """
 
     @classmethod
@@ -54,11 +51,6 @@ class VisualPromptGallery:
     ============================================================================
     MAIN EXECUTION LOGIC
     ============================================================================
-    Processes the selected image from the gallery.
-    1. Decodes the JSON string identifying the current image.
-    2. Locates the file in the input directory.
-    3. Loads and converts the image to a torch tensor.
-    4. Returns the image tensor along with the stored prompts.
     """
 
     def output_data(
