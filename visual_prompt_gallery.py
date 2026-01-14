@@ -6,21 +6,18 @@ import json
 import os
 import logging
 import io
+from pathlib import Path
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-logger = logging.getLogger("VisualPromptGallery")
+
+NODE_DIR_NAME = Path(__file__).parent.name
+logger = logging.getLogger(NODE_DIR_NAME)
 
 
 class VisualPromptGallery:
     def __init__(self):
         pass
-
-    """
-    ============================================================================
-    NODE DEFINITION
-    ============================================================================
-    """
 
     @classmethod
     def INPUT_TYPES(s):
@@ -46,12 +43,6 @@ class VisualPromptGallery:
     )
     FUNCTION = "output_data"
     CATEGORY = "utils"
-
-    """
-    ============================================================================
-    MAIN EXECUTION LOGIC
-    ============================================================================
-    """
 
     def output_data(
         self,
@@ -99,17 +90,13 @@ class VisualPromptGallery:
                         img_out = torch.from_numpy(image)[None,]
 
                     except Exception as e:
-                        logger.error(
-                            f"VisualPromptGallery: Failed to decode image '{filename}'. Error: {e}"
-                        )
+                        logger.error(f"Failed to decode image '{filename}'. Error: {e}")
                         img_out = None
                 else:
-                    logger.warning(
-                        f"VisualPromptGallery: Image file not found at {image_path}"
-                    )
+                    logger.warning(f"Image file not found at {image_path}")
 
             except Exception as e:
-                logger.error(f"VisualPromptGallery: General error loading image: {e}")
+                logger.error(f"General error loading image: {e}")
 
         if img_out is None:
             img_out = torch.zeros((1, 64, 64, 3), dtype=torch.float32)

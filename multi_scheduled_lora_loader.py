@@ -1,264 +1,287 @@
 from __future__ import annotations
-import os
-import logging
 import json
+from pathlib import Path
+from typing import Any, Dict, Optional
 import comfy.hooks
 import comfy.utils
-import folder_paths
+
+from .modules.lora_inspector import LoRAInspector
+from .modules.lora_ops import LoraOps
+
+NODE_DIR_NAME = Path(__file__).parent.name
+
+
+_LORA_CACHE = {}
 
 
 class MultiScheduledLoraLoader:
-    """
-    ============================================================================
-    NODE DEFINITION & INPUT CONFIGURATION
-    ============================================================================
-    """
-
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
-                "schedule_config": (
-                    "STRING",
-                    {"default": "[]", "multiline": False, "forceInput": False},
-                ),
+                "schedule_config": ("STRING", {"default": "[]", "hidden": True}),
             },
             "optional": {
+                "model": ("MODEL",),
                 "previous_hooks": ("HOOKS",),
                 "schedule_string": ("STRING", {"forceInput": True, "multiline": True}),
             },
         }
 
-    RETURN_TYPES = ("HOOKS", "STRING")
-    RETURN_NAMES = ("HOOKS", "schedule_string")
+    RETURN_TYPES = ("MODEL", "HOOKS", "STRING", "STRING")
+    RETURN_NAMES = ("MODEL", "HOOKS", "schedule_string", "trigger_words")
     FUNCTION = "process"
     CATEGORY = "advanced/hooks/scheduling"
 
-    """
-    ============================================================================
-    FILE SYSTEM UTILITIES
-    ============================================================================
-    """
+    @classmethod
+    def inspect_lora_architecture(
+        cls, file_path: Path | str, force_refresh: bool = False
+    ) -> str:
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
 
-    def get_lora_path(self, lora_name):
-        return folder_paths.get_full_path("loras", lora_name)
+        path_str = str(file_path)
+        if (
+            not force_refresh
+            and path_str in _LORA_CACHE
+            and _LORA_CACHE[path_str].get("arch")
+        ):
+            return _LORA_CACHE[path_str]["arch"]
 
-    def find_lora_path_by_name(self, sanitized_name: str) -> str | None:
-        if not sanitized_name:
-            return None
+        arch = LoRAInspector.detect(file_path)
+        if path_str not in _LORA_CACHE:
+            _LORA_CACHE[path_str] = {}
+        _LORA_CACHE[path_str]["arch"] = arch
+        return arch
 
-        all_loras = folder_paths.get_filename_list("loras")
+    @classmethod
+    def analyze_lora_weights(
+        cls, file_path: Path, force_refresh: bool = False, arch: str = "UNKNOWN"
+    ) -> Optional[Dict[str, Any]]:
+        path_str = str(file_path)
+        if (
+            not force_refresh
+            and path_str in _LORA_CACHE
+            and _LORA_CACHE[path_str].get("stats")
+        ):
+            return _LORA_CACHE[path_str]["stats"]
 
-        if sanitized_name in all_loras:
-            return sanitized_name
+        stats = LoraOps.compute_stats(file_path, arch)
 
-        target_clean = os.path.splitext(os.path.basename(sanitized_name))[0]
+        if path_str not in _LORA_CACHE:
+            _LORA_CACHE[path_str] = {}
+        _LORA_CACHE[path_str]["stats"] = stats
+        return stats
 
-        for lora_path in all_loras:
-            current_clean = os.path.splitext(os.path.basename(lora_path))[0]
-            if current_clean == target_clean:
-                return lora_path
+    @staticmethod
+    def classify_sdxl_lineage_from_stats(stats: Dict[str, Any]) -> str:
+        return LoRAInspector.classify_sdxl_lineage_from_stats(stats)
 
-        return None
-
-    """
-    ============================================================================
-    SCHEDULE PARSER
-    ============================================================================
-    """
-
-    def parse_schedule_string(self, input_string):
-        lora_list = []
-        if not input_string:
-            return []
-
-        input_string = input_string.strip()
-        if not input_string:
-            return []
-
-        if input_string.startswith("["):
-            try:
-                return json.loads(input_string)
-            except Exception as e:
-                logging.warning(
-                    f"[MultiScheduledLoraLoader] JSON parse failed, falling back to string parser: {e}"
-                )
-
-        lines = input_string.split("\n")
-        for line in lines:
-            line = line.strip()
-            if not line.startswith("<lora:") or not line.endswith(">"):
-                continue
-
-            content = line[6:-1]
-            parts = content.split(":")
-
-            if len(parts) < 3:
-                continue
-
-            lora_name_in = parts[0]
-
-            lora_path = self.find_lora_path_by_name(lora_name_in)
-
-            if not lora_path:
-                lora_path = lora_name_in
-
-            try:
-                item = {
-                    "lora_name": lora_path,
-                    "strength_model": float(parts[1]),
-                    "strength_clip": float(parts[2]),
-                    "points": [],
-                    "enabled": True,
-                }
-
-                if len(parts) == 4:
-                    points_str = parts[3]
-                    point_pairs = points_str.split(";")
-                    for pair in point_pairs:
-                        if "," in pair:
-                            px, py = pair.split(",")
-                            item["points"].append({"x": float(px), "y": float(py)})
-
-                elif len(parts) >= 9:
-                    s_start = float(parts[3])
-                    s_end = float(parts[4])
-                    p_start = float(parts[6])
-                    p_end = float(parts[7])
-                    count = int(parts[8])
-
-                    for i in range(count):
-                        t = i / (count - 1) if count > 1 else 0.0
-                        x = p_start + (p_end - p_start) * t
-                        y = s_start + (s_end - s_start) * t
-                        item["points"].append({"x": x, "y": y})
-
-                lora_list.append(item)
-
-            except Exception as e:
-                logging.error(
-                    f"[MultiScheduledLoraLoader] Error parsing line '{line}': {e}"
-                )
-
-        return lora_list
-
-    """
-    ============================================================================
-    MAIN EXECUTION LOGIC
-    ============================================================================
-    """
-
-    def process(self, schedule_config, schedule_string=None, previous_hooks=None):
-        active_loras = []
-
+    def process(
+        self,
+        schedule_config: str,
+        schedule_string: Optional[str] = None,
+        previous_hooks: Optional[comfy.hooks.HookGroup] = None,
+        model: Optional[object] = None,
+    ):
         internal_loras = []
         if schedule_config and schedule_config != "[]":
-            internal_loras = self.parse_schedule_string(schedule_config)
+            try:
+                data = json.loads(schedule_config)
 
-        has_enabled_internal = False
-        if internal_loras:
-            for item in internal_loras:
-                if item.get("enabled", True):
-                    has_enabled_internal = True
-                    break
+                if isinstance(data, dict):
+                    active_profile = data.get("active_profile", "Default")
+                    profiles = data.get("profiles", {})
+                    profile_data = profiles.get(active_profile, {})
 
-        if has_enabled_internal:
+                    if isinstance(profile_data, dict) and "loras" in profile_data:
+                        raw_list = profile_data["loras"]
+                    elif isinstance(profile_data, list):
+                        raw_list = profile_data
+                    else:
+                        raw_list = []
+                else:
+                    raw_list = data
+
+                internal_loras = [x for x in raw_list if x.get("enabled", True)]
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        has_internal = len(internal_loras) > 0
+        has_str = schedule_string is not None and len(schedule_string.strip()) > 0
+        has_hooks = previous_hooks is not None
+
+        mode = "STANDARD"
+        if not has_internal and has_str and not has_hooks:
+            mode = "EXTERNAL_A"
+        elif not has_internal and not has_str and has_hooks:
+            mode = "EXTERNAL_B"
+        elif not has_internal and has_str and has_hooks:
+            mode = "BRIDGE"
+        elif has_internal and has_str and has_hooks:
+            mode = "OVERRIDE"
+
+        active_loras, str_prepend, hooks_prepend, extract_trig = [], "", None, False
+
+        if mode == "STANDARD":
             active_loras = internal_loras
-        elif schedule_string:
-            active_loras = self.parse_schedule_string(schedule_string)
+            if has_hooks:
+                hooks_prepend = previous_hooks
+        elif mode == "OVERRIDE":
+            active_loras = internal_loras
+            str_prepend = schedule_string
+            hooks_prepend = previous_hooks
+            extract_trig = True
+        elif mode == "EXTERNAL_A":
+            active_loras = LoraOps.parse_external_string(schedule_string)
+        elif mode == "EXTERNAL_B":
+            hooks_prepend = previous_hooks
+        elif mode == "BRIDGE":
+            str_prepend = schedule_string
+            hooks_prepend = previous_hooks
+            extract_trig = True
 
-        current_node_hooks = []
-        current_node_text_lines = []
+        hooks, text_out, triggers_out = [], [], []
 
-        def fmt(val):
-            return f"{float(val):.4f}".rstrip("0").rstrip(".")
+        if extract_trig and str_prepend:
+            for item in LoraOps.parse_external_string(str_prepend):
+                path = LoraOps.resolve_path(item.get("lora_name"))
+                if path:
+                    triggers_out.extend(LoraOps.extract_triggers(Path(path)))
 
         for item in active_loras:
             if not item.get("enabled", True):
                 continue
-
             lora_name = item.get("lora_name")
-            if not lora_name:
+            path = LoraOps.resolve_path(lora_name)
+            if not path:
                 continue
 
-            lora_path = self.get_lora_path(lora_name)
-            if not lora_path:
-                logging.warning(
-                    f"[MultiScheduledLoraLoader] LoRA not found: {lora_name}"
+            triggers_out.extend(LoraOps.extract_triggers(Path(path)))
+            lora = comfy.utils.load_torch_file(path, safe_load=True)
+            if not lora:
+                continue
+
+            p = {
+                k: float(item.get(k, 1.0))
+                for k in [
+                    "strength_model",
+                    "strength_clip",
+                ]
+            }
+            arch = item.get("arch", "UNKNOWN")
+            vectors = item.get("vectors", {})
+
+            if arch == "UNKNOWN":
+                arch = self.inspect_lora_architecture(Path(path))
+
+            preset = item.get("preset")
+            if preset:
+                stats = self.analyze_lora_weights(Path(path), arch=arch)
+                if stats:
+                    available_blocks = list(stats.get("energy_distribution", {}).keys())
+                    meta = stats.get("block_metadata", {})
+                    preset_vectors = LoraOps.get_vectors_for_preset(
+                        arch, preset, available_blocks, meta
+                    )
+
+                    preset_vectors.update(vectors)
+                    vectors = preset_vectors
+
+            if vectors:
+                lora = LoraOps.apply_lbw(
+                    lora,
+                    arch,
+                    lora_name,
+                    vectors,
                 )
+
+            if abs(p["strength_model"]) < 1e-6 and abs(p["strength_clip"]) < 1e-6:
                 continue
 
-            lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
-            if lora is None:
-                continue
-
-            s_model = float(item.get("strength_model", 1.0))
-            s_clip = float(item.get("strength_clip", 1.0))
-
-            if s_model == 0 and s_clip == 0:
-                continue
+            pts = item.get("points", [])
+            if pts:
+                pts.sort(key=lambda x: x["x"])
+                ramp = 0.001
+                if pts[0]["x"] > 0:
+                    pts = (
+                        [{"x": 0.0, "y": 0.0}]
+                        + (
+                            [{"x": max(0, pts[0]["x"] - ramp), "y": 0.0}]
+                            if pts[0]["x"] > ramp
+                            else []
+                        )
+                        + pts
+                    )
+                if pts[-1]["x"] < 1.0:
+                    pts += (
+                        [{"x": min(1.0, pts[-1]["x"] + ramp), "y": 0.0}]
+                        if pts[-1]["x"] < 1.0 - ramp
+                        else []
+                    ) + [{"x": 1.0, "y": 0.0}]
+                item["points"] = pts
 
             hook = comfy.hooks.create_hook_lora(
-                lora=lora, strength_model=s_model, strength_clip=s_clip
+                lora, p["strength_model"], p["strength_clip"]
             )
-
-            points = item.get("points", [])
-            if points:
-                points.sort(key=lambda p: p["x"])
-                hook_kf = comfy.hooks.HookKeyframeGroup()
-                for i, p in enumerate(points):
-                    percent = float(p["x"])
-                    strength = float(p["y"])
-                    guarantee_steps = 1 if i == 0 else 0
-
-                    hook_kf.add(
+            if pts:
+                grp = comfy.hooks.HookKeyframeGroup()
+                for pt in pts:
+                    grp.add(
                         comfy.hooks.HookKeyframe(
-                            strength=strength,
-                            start_percent=percent,
-                            guarantee_steps=guarantee_steps,
+                            strength=float(pt["y"]), start_percent=float(pt["x"])
                         )
                     )
-                hook.set_keyframes_on_hooks(hook_kf=hook_kf)
+                hook.set_keyframes_on_hooks(grp)
+            hooks.append(hook)
 
-            current_node_hooks.append(hook)
+            def fv(v):
+                return f"{v:.4f}".rstrip("0").rstrip(".")
 
-            try:
-                clean_name = os.path.splitext(os.path.basename(lora_name))[0]
-                points_str = ""
-                if points:
-                    points_str = ":" + ";".join(
-                        [f"{fmt(p['x'])},{fmt(p['y'])}" for p in points]
-                    )
-                line = f"<lora:{clean_name}:{fmt(s_model)}:{fmt(s_clip)}{points_str}>"
-                current_node_text_lines.append(line)
-            except Exception as e:
-                logging.warning(
-                    f"[MultiScheduledLoraLoader] Error generating string: {e}"
-                )
+            extra_s = ""
 
-        final_hook_list = []
-        if previous_hooks is not None:
-            final_hook_list.append(previous_hooks)
+            active_preset = item.get("preset")
 
-        final_hook_list.extend(current_node_hooks)
+            if active_preset and active_preset != "CUSTOM":
+                extra_s = f":preset={active_preset}"
+            elif vectors:
+                extra_s = f":vectors={LoraOps.serialize_vectors(vectors)}"
 
-        if not final_hook_list:
-            combined_group = comfy.hooks.HookGroup()
+            pts_s = (
+                ":" + ";".join([f"{fv(pt['x'])},{fv(pt['y'])}" for pt in pts])
+                if pts
+                else ""
+            )
+
+            clean_name = Path(lora_name).stem
+            str_model = fv(p["strength_model"])
+            str_clip = fv(p["strength_clip"])
+
+            text_out.append(
+                f"<lora:{clean_name}:{str_model}:{str_clip}{pts_s}{extra_s}>"
+            )
+
+        if hooks_prepend:
+            hooks.insert(0, hooks_prepend)
+        final_group = (
+            comfy.hooks.HookGroup.combine_all_hooks(hooks)
+            if hooks
+            else comfy.hooks.HookGroup()
+        )
+
+        if model:
+            model_out = model.clone()
+            model_out.register_all_hook_patches(
+                final_group,
+                comfy.hooks.create_target_dict(comfy.hooks.EnumWeightTarget.Model),
+            )
         else:
-            combined_group = comfy.hooks.HookGroup.combine_all_hooks(final_hook_list)
+            model_out = None
 
-        current_text_block = "\n".join(current_node_text_lines)
-
-        if has_enabled_internal:
-            if (
-                previous_hooks is not None
-                and schedule_string
-                and schedule_string.strip()
-            ):
-                final_string = f"{schedule_string}\n{current_text_block}"
-            else:
-                final_string = current_text_block
-        else:
-            final_string = schedule_string if schedule_string else ""
-
-        return (combined_group, final_string)
+        final_string = "\n".join(filter(None, [str_prepend, "\n".join(text_out)]))
+        return (
+            model_out,
+            final_group,
+            final_string,
+            ", ".join(sorted(list(set(triggers_out)))),
+        )

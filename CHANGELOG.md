@@ -2,6 +2,44 @@
 
 All major and minor version changes will be documented in this file.
 
+## [1.2.0] - 2026-01-14
+### Added
+- **Multi Scheduled LoRA Loader:**
+  - **Block Weight System (LBW):**
+    - Integrated **Block Weight Editor** with sliders for individual blocks.
+    - Added **Semantic Presets** (Linear, Style Focused, Balanced, Heavy Style, Realism) to automatically adjust weights based on block function.
+    - Added **Group Controls** to sync related blocks (e.g., Input, Middle, Output).
+  - **LoRA Analysis & Inspection:**
+    - Added **Architecture Detection** supporting SDXL, FLUX, SD1.5, SD3, Pony, Illustrious, and more.
+    - Added **Weight Distribution Heatmaps** to visualize where a LoRA focuses its weight distribution.
+    - Added **Stability & Influence Metrics** (Sparsity/Concentration and Bias).
+  - **Profile Management:**
+    - Added ability to **Create, Duplicate, Rename, and Delete** profiles within the node.
+    - Node title now dynamically updates to show the active profile name.
+  - **Preview System:**
+    - Added **Media Preview Pane** that displays images/videos when hovering over a LoRA (requires sidecar files/LoRA Manager).
+  - **Compatibility Checking:**
+    - Added automatic checks between the connected Checkpoint and selected LoRAs to warn about architecture mismatches.
+  - **New Outputs:**
+    - Added `trigger_words` output string (extracted from LoRA metadata/LoRA Manager).
+  - **Backend Optimizations:**
+    - Implemented **SafeTensors Streaming** to analyze LoRA headers and weights without loading the full file into RAM.
+    - Added **IndexedDB Caching** (browser) and Python-side caching for instant re-opening of the editor.
+
+### Changed
+- **Multi Scheduled LoRA Loader:**
+  - Refactored `schedule_config` to support the new Profile data structure while maintaining backward compatibility with legacy lists.
+  - Updated the **Curve Editor UI** with a new sidebar layout, collapsible panels, and improved badges.
+  - Improved **External Schedule String** parsing to support flexible formats, including inline block vectors and presets.
+  - Moved heavy logic into modular files (subfolder `/modules` and `/js`) for better maintainability.
+- **Visual Prompt Gallery:**
+  - Improved tooltip handling for metadata display.
+
+### Fixed
+- **Multi Scheduled LoRA Loader:**
+  - Fixed edge cases in curve ramp generation (ensuring 0.0 strength outside defined keyframes).
+  - Fixed potential memory leaks in tooltip generation.
+
 ## [1.1.0] - 2025-12-29
 ### Added
 - **Multi Scheduled LoRA Loader:**

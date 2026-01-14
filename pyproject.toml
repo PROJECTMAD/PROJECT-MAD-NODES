@@ -1,7 +1,7 @@
 [project]
 name = "project-mad-nodes"
 description = "Precise visual control over LoRA strength scheduling via curve editor, plus a drag-and-drop prompt gallery for instant metadata extraction."
-version = "1.1.0"
+version = "1.2.0"
 license = { file = "LICENSE" }
 
 authors = [
@@ -16,11 +16,16 @@ keywords = [
     "scheduling",
     "curve",
     "curve-editor",
-    "editor",
+    "hooks",
+    "vectors",
+    "block-weights",
+    "architecture-detection",
     "gallery",
     "metadata",
     "prompt",
-    "visual"
+    "visual",
+    "flux",
+    "sdxl"
 ]
 
 classifiers = [
@@ -36,7 +41,7 @@ dependencies = []
 
 [project.urls]
 Repository = "https://github.com/PROJECTMAD/PROJECT-MAD-NODES"
-Documentation = "https://github.com/PROJECTMAD/PROJECT-MAD-NODES/blob/main/docs/GUIDE.md"
+Documentation = "https://github.com/PROJECTMAD/PROJECT-MAD-NODES/blob/main/readme.md"
 "Bug Tracker" = "https://github.com/PROJECTMAD/PROJECT-MAD-NODES/issues"
 Changelog = "https://github.com/PROJECTMAD/PROJECT-MAD-NODES/blob/main/CHANGELOG.md"
 
