@@ -2,7 +2,7 @@
 
 # Multi Scheduled LoRA Loader
 
-<video src="../assets/multi_scheduled_lora_loader_preview.mp4" width="100%" autoplay loop muted playsinline></video>
+<video src="https://github.com/PROJECTMAD/PROJECT-MAD-NODES/raw/refs/heads/main/assets/multi_scheduled_lora_loader_preview.mp4" width="100%" autoplay loop muted playsinline></video>
 
 **Dynamic LoRA strength control over generation steps**
 
