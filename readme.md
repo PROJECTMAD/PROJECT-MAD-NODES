@@ -78,7 +78,7 @@ git clone https://github.com/PROJECTMAD/PROJECT-MAD-NODES.git
 
 ### Multi Scheduled LoRA Loader
 
-<video src="https://github.com/PROJECTMAD/PROJECT-MAD-NODES/raw/refs/heads/main/assets/multi_scheduled_lora_loader_preview.mp4" width="100%" autoplay loop muted playsinline></video>
+![Preview](/assets/multi_scheduled_lora_loader_preview.webp)
 
 **Draw strength curves. Control timing. Stack multiple LoRAs.**
 
