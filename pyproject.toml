@@ -1,7 +1,7 @@
 [project]
 name = "project-mad-nodes"
-description = "Precise visual control over LoRA strength scheduling via curve editor, plus a drag-and-drop prompt gallery for instant metadata extraction."
-version = "1.2.0"
+description = "Advanced LoRA scheduling with visual curves, block weights (LBW), and architecture detection. Includes a visual prompt gallery for workflow metadata management. Strongly recommend using LoRA Manager for metadata building."
+version = "1.2.1"
 license = { file = "LICENSE" }
 
 authors = [
@@ -9,23 +9,26 @@ authors = [
 ]
 
 keywords = [
-    "comfy",
     "comfyui",
+    "custom-nodes",
     "lora",
-    "schedule",
+    "lora-loader",
     "scheduling",
-    "curve",
+    "scheduler",
     "curve-editor",
-    "hooks",
-    "vectors",
     "block-weights",
-    "architecture-detection",
+    "lbw",
+    "vectors",
+    "hooks",
     "gallery",
     "metadata",
-    "prompt",
-    "visual",
+    "prompt-management",
+    "image-browser",
+    "sdxl",
     "flux",
-    "sdxl"
+    "pony",
+    "sd3",
+    "illustrious"
 ]
 
 classifiers = [
@@ -35,6 +38,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Topic :: Multimedia :: Graphics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
 
 dependencies = []

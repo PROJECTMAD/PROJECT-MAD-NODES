@@ -2,6 +2,15 @@
 
 All major and minor version changes will be documented in this file.
 
+## [1.2.1] - 2026-01-22
+### Changed
+- **Visual Prompt Gallery:**
+  - Made tooltips more readable by adding custom CSS.
+
+### Fixed
+- **Visual Prompt Gallery:**
+  - Fixed issue where metadata extraction failed for some messy JSON strings.
+
 ## [1.2.0] - 2026-01-14
 ### Added
 - **Multi Scheduled LoRA Loader:**

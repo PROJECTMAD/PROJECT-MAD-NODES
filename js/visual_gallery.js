@@ -320,79 +320,287 @@ app.registerExtension({
                  * ============================================================================
                  */
 
-                const decodeUserComment = (tag) => {
+                const isLikelyMojibake = (str) => {
+                    if (!str) return true;
+                    if (str.trim().startsWith("{") || str.trim().startsWith("[")) return false;
+                    let nonAscii = 0;
+                    for (let i = 0; i < str.length; i++) {
+                        if (str.charCodeAt(i) > 127) nonAscii++;
+                    }
+                    return (nonAscii / str.length) > 0.3;
+                };
+
+                const looksLikeJson = (str) => {
+                    if (typeof str !== 'string') return false;
+                    const s = str.trim();
+                    if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+                        if (s.includes('"') || s.includes(':') || s.includes(',')) return true;
+                    }
+                    return false;
+                };
+
+                const sanitizePrompt = (text) => {
+                    if (typeof text !== "string") return "";
+                    if (looksLikeJson(text)) return "";
+
+                    let clean = text;
+                    const garbageRegex = /^[\s,.;:!?]+|[\s,.;:!?]+$/g;
+                    const breakRegex = /^BREAK\b|\bBREAK$/gi;
+
+                    while (true) {
+                        const previous = clean;
+                        clean = clean.replace(garbageRegex, "");
+                        clean = clean.replace(breakRegex, "");
+                        if (clean === previous) break;
+                    }
+                    
+                    return clean;
+                };
+
+                const smartDecode = (tag) => {
                     if (!tag) return "";
-                    if (typeof tag.description === "string" && tag.description !== "[Unicode encoded text]" && !tag.description.startsWith("binary comment")) {
+                    
+                    if (typeof tag.description === "string" && 
+                        tag.description !== "[Unicode encoded text]" && 
+                        !tag.description.startsWith("binary comment")) {
                         return tag.description.replace(/\0/g, "").trim();
                     }
-                    if (tag.value && Array.isArray(tag.value)) {
+
+                    if (tag.value && (Array.isArray(tag.value) || tag.value instanceof Uint8Array)) {
                         const bytes = new Uint8Array(tag.value);
-                        const tryDecode = (data, encoding) => {
-                            try {
-                                const decoder = new TextDecoder(encoding);
-                                const text = decoder.decode(data).replace(/\0/g, "").trim();
-                                return text;
-                            } catch (e) {
-                                return null;
-                            }
-                        };
+                        if (bytes.length === 0) return "";
+
+                        const decoderUtf8 = new TextDecoder("utf-8");
+                        const decoderUtf16 = new TextDecoder("utf-16le");
+
+                        let payload = bytes;
+                        let hasUnicodeHeader = false;
+
                         if (bytes.length >= 8) {
                             const header = String.fromCharCode(...bytes.slice(0, 8));
                             if (header.startsWith("UNICODE")) {
-                                const payload = bytes.slice(8);
-                                let text = tryDecode(payload, "utf-16le");
-                                if (text && (text.includes("") || /[\u4E00-\u9FFF]/.test(text))) {
-                                    const utf8Text = tryDecode(payload, "utf-8");
-                                    if (utf8Text && (utf8Text.startsWith("{") || /^[a-zA-Z0-9]/.test(utf8Text))) {
-                                        return utf8Text;
-                                    }
-                                }
-                                return text;
-                            }
-                            if (header.startsWith("ASCII")) {
-                                return tryDecode(bytes.slice(8), "utf-8");
+                                payload = bytes.slice(8);
+                                hasUnicodeHeader = true;
+                            } else if (header.startsWith("ASCII")) {
+                                payload = bytes.slice(8);
                             }
                         }
-                        return tryDecode(bytes, "utf-8");
+
+                        let candidates = [];
+
+                        if (hasUnicodeHeader) {
+                            try {
+                                const str16 = decoderUtf16.decode(payload).replace(/\0/g, "").trim();
+                                candidates.push({ str: str16, type: 'utf16' });
+                            } catch(e) {}
+                        }
+
+                        try {
+                            const str8 = decoderUtf8.decode(payload).replace(/\0/g, "").trim();
+                            candidates.push({ str: str8, type: 'utf8' });
+                        } catch(e) {}
+
+                        for (const cand of candidates) {
+                            if (cand.str.startsWith("{") || cand.str.startsWith("[")) {
+                                try {
+                                    JSON.parse(cand.str);
+                                    return cand.str; 
+                                } catch(e) {}
+                            }
+                        }
+
+                        const cleanest = candidates.find(c => !isLikelyMojibake(c.str));
+                        return cleanest ? cleanest.str : (candidates[0]?.str || "");
                     }
+
                     return "";
                 };
 
                 const parseGenerationText = (text, metadata) => {
                     if (!text) return;
+                    
+                    if (text.length < 10) return;
+
                     let posEnd = text.length;
                     const negIdx = text.indexOf("Negative prompt:");
                     const stepsIdx = text.search(/Steps:\s*\d+/);
+                    
                     if (negIdx !== -1) posEnd = negIdx;
                     else if (stepsIdx !== -1) posEnd = stepsIdx;
+                    
                     const pos = text.substring(0, posEnd).trim();
-                    if (pos && !metadata.positive_prompt) metadata.positive_prompt = pos;
+                    
+                    if (pos && pos.length > 2 && !metadata.positive_prompt) {
+                        metadata.positive_prompt = sanitizePrompt(pos);
+                    }
+                    
                     if (negIdx !== -1) {
                         let negEnd = stepsIdx !== -1 ? stepsIdx : text.length;
                         const neg = text.substring(negIdx + 16, negEnd).trim();
-                        if (neg) metadata.negative_prompt = neg;
+                        if (neg) metadata.negative_prompt = sanitizePrompt(neg);
                     }
                 };
 
-                const parseCivitaiStructure = (jsonObj, metadata) => {
-                    try {
-                        let extra = jsonObj.extraMetadata;
-                        if (extra) {
-                            if (typeof extra === "string") {
-                                try {
-                                    extra = JSON.parse(extra);
-                                } catch (e) {
-                                    extra = null;
-                                }
-                            }
-                        }
-                        if (!extra) extra = jsonObj;
-                        if (extra.prompt && !metadata.positive_prompt) metadata.positive_prompt = extra.prompt;
-                        if (extra.negativePrompt && !metadata.negative_prompt) metadata.negative_prompt = extra.negativePrompt;
-                        return true;
-                    } catch (e) {
+                const parseComfyGraph = (graph, metadata) => {
+                    if (!graph) return false;
+                    let isApi = false;
+                    
+                    if (graph.nodes && Array.isArray(graph.nodes)) {
+                        isApi = false;
+                    } else if (typeof graph === 'object' && Object.values(graph).some(n => n.class_type)) {
+                        isApi = true;
+                    } else {
                         return false;
                     }
+
+                    const findNode = (id) => (isApi ? graph[id] : graph.nodes.find((n) => n.id == id));
+
+                    const traceText = (nodeId) => {
+                        const node = findNode(nodeId);
+                        if (!node) return "";
+                        
+                        const type = node.class_type;
+                        
+                        if (node.widgets_values) {
+                            const w = node.widgets_values;
+                            const val = Array.isArray(w) ? w.find(x => typeof x === 'string') : w;
+                            if (typeof val === "string" && val.length > 0) {
+                                if (looksLikeJson(val)) return "";
+                                return val;
+                            }
+                        }
+
+                        return traceInput(node, "text") || traceInput(node, "string") || traceInput(node, "value");
+                    };
+
+                    const traceInput = (node, inputName) => {
+                        if (!node) return "";
+                        
+                        if (isApi && node.inputs) {
+                             const val = node.inputs[inputName];
+                             if (Array.isArray(val)) return traceText(val[0]);
+                             if (typeof val === "string") return val;
+                        } 
+                        else if (!isApi && node.inputs && Array.isArray(node.inputs)) {
+                             const inp = node.inputs.find(i => i.name === inputName);
+                             if (inp && inp.link && graph.links) {
+                                 const link = graph.links.find(l => l[0] === inp.link);
+                                 if (link) return traceText(link[1]);
+                             }
+                        }
+                        
+                        if (node.widgets_values) {
+                             const w = node.widgets_values;
+                             const val = Array.isArray(w) ? w[0] : w;
+                             if (typeof val === "string") return val;
+                        }
+                        return "";
+                    };
+
+                    const nodes = isApi ? Object.values(graph) : graph.nodes;
+                    const samplers = nodes.filter(n => n.class_type && n.class_type.toLowerCase().includes("sampler"));
+
+                    let bestPos = "", bestNeg = "";
+                    samplers.forEach(s => {
+                        const pos = traceInput(s, "positive");
+                        const neg = traceInput(s, "negative");
+                        if (pos && pos.length > bestPos.length) bestPos = pos;
+                        if (neg && neg.length > bestNeg.length) bestNeg = neg;
+                    });
+
+                    let found = false;
+                    if (bestPos && !metadata.positive_prompt) {
+                        metadata.positive_prompt = sanitizePrompt(bestPos);
+                        found = true;
+                    }
+                    if (bestNeg && !metadata.negative_prompt) {
+                        metadata.negative_prompt = sanitizePrompt(bestNeg);
+                        found = true;
+                    }
+                    return found;
+                };
+
+                const extractPromptsFromJSON = (jsonObj, metadata) => {
+                    if (!jsonObj || typeof jsonObj !== "object") return false;
+
+                    const isComfyGraph = parseComfyGraph(jsonObj, metadata);
+                    if (isComfyGraph) return true;
+
+                    if (jsonObj.sui_image_params) {
+                        const sui = jsonObj.sui_image_params;
+                        if (sui.prompt && !metadata.positive_prompt) metadata.positive_prompt = sanitizePrompt(sui.prompt);
+                        if (sui.negativeprompt && !metadata.negative_prompt) metadata.negative_prompt = sanitizePrompt(sui.negativeprompt);
+                        return true;
+                    }
+
+                    let root = jsonObj;
+                    if (jsonObj.extraMetadata) {
+                        try {
+                            root = typeof jsonObj.extraMetadata === "string" ? JSON.parse(jsonObj.extraMetadata) : jsonObj.extraMetadata;
+                        } catch (e) {}
+                    }
+
+                    if (root.prompt && !metadata.positive_prompt && typeof root.prompt === 'string') metadata.positive_prompt = sanitizePrompt(root.prompt);
+                    if (root.negativePrompt && !metadata.negative_prompt) metadata.negative_prompt = sanitizePrompt(root.negativePrompt);
+                    if (root.negative_prompt && !metadata.negative_prompt) metadata.negative_prompt = sanitizePrompt(root.negative_prompt);
+
+                    if (metadata.positive_prompt && metadata.negative_prompt) return true;
+
+                    const candidates = { positive: [], negative: [] };
+                    const isNegativeKey = (k) => /negative/i.test(k);
+                    const isPositiveKey = (k) => (/prompt|positive|caption|text/i.test(k)) && !isNegativeKey(k);
+                    
+                    const walk = (node, depth = 0) => {
+                        if (depth > 8 || !node || typeof node !== 'object') return;
+
+                        for (const [key, val] of Object.entries(node)) {
+                            if (typeof val === "string" && val.length > 2) {
+                                if (looksLikeJson(val)) continue;
+
+                                const cleanKey = key.toLowerCase().replace(/[^a-z]/g, "");
+                                
+                                if (isNegativeKey(cleanKey)) {
+                                    candidates.negative.push({ val, score: val.length });
+                                } else if (isPositiveKey(cleanKey)) {
+                                    let score = val.length;
+                                    
+                                    if (cleanKey === "prompt" || cleanKey === "positive") score += 50; 
+                                    
+                                    candidates.positive.push({ val, score });
+                                }
+                            } else if (typeof val === "object") {
+                                walk(val, depth + 1);
+                            }
+                        }
+                    };
+
+                    walk(root);
+
+                    candidates.positive.sort((a, b) => b.score - a.score);
+                    candidates.negative.sort((a, b) => b.score - a.score);
+
+                    if (!metadata.positive_prompt && candidates.positive.length > 0) {
+                        metadata.positive_prompt = sanitizePrompt(candidates.positive[0].val);
+                    }
+                    if (!metadata.negative_prompt && candidates.negative.length > 0) {
+                        metadata.negative_prompt = sanitizePrompt(candidates.negative[0].val);
+                    }
+
+                    return !!(metadata.positive_prompt || metadata.negative_prompt);
+                };
+
+                const processRawMetadataString = (text, metadata) => {
+                    if (!text || typeof text !== 'string') return;
+                    text = text.trim();
+                    
+                    if (text.startsWith('{') || text.startsWith('[')) {
+                        try {
+                            const json = JSON.parse(text);
+                            const found = extractPromptsFromJSON(json, metadata);
+                            if (found) return; 
+                        } catch (e) {}
+                    }
+                    parseGenerationText(text, metadata);
                 };
 
                 this.fetchMetadata = async (imgInfo) => {
@@ -414,106 +622,30 @@ app.registerExtension({
                         const tags = ExifReader.load(buffer);
                         let metadata = { positive_prompt: "", negative_prompt: "" };
 
-                        if (tags.UserComment) {
-                            const cleanUC = decodeUserComment(tags.UserComment);
-                            if (cleanUC) {
-                                if (cleanUC.trim().startsWith("{")) {
-                                    try {
-                                        const jsonUC = JSON.parse(cleanUC);
-                                        parseCivitaiStructure(jsonUC, metadata);
-                                    } catch (e) {
-                                        parseGenerationText(cleanUC, metadata);
-                                    }
-                                } else {
-                                    parseGenerationText(cleanUC, metadata);
-                                }
-                            }
-                        }
-                        if (tags.parameters && tags.parameters.description) {
-                            parseGenerationText(tags.parameters.description, metadata);
-                        }
-                        if (tags["sd-metadata"] && tags["sd-metadata"].description) {
-                            try {
-                                const invokeData = JSON.parse(tags["sd-metadata"].description);
-                                parseCivitaiStructure(invokeData, metadata);
-                            } catch (e) {}
+                        const allowRegex = /^(parameters|workflow|prompt|usercomment|description|comment|sd-metadata)$/i;
+
+                        for (const [key, tag] of Object.entries(tags)) {
+                            if (!allowRegex.test(key)) continue;
+
+                            const text = smartDecode(tag);
+                            if (!text || text.length < 2) continue;
+
+                            processRawMetadataString(text, metadata);
                         }
 
                         let comfyJson = null;
-                        let isApiFormat = false;
+                        
                         if (tags.prompt && tags.prompt.description) {
                             comfyJson = tags.prompt.description;
-                            isApiFormat = true;
                         } else if (tags.workflow && tags.workflow.description) {
                             comfyJson = tags.workflow.description;
-                            isApiFormat = false;
                         }
 
-                        if (comfyJson) {
+                        if (comfyJson && (!metadata.positive_prompt || !metadata.negative_prompt)) {
                             try {
                                 const graph = JSON.parse(comfyJson);
-                                const findNode = (id) => (isApiFormat ? graph[id] : graph.nodes ? graph.nodes.find((n) => n.id == id) : null);
-                                const traceInput = (node, inputName) => {
-                                    if (!node) return "";
-                                    if (isApiFormat && node.inputs) {
-                                        const val = node.inputs[inputName];
-                                        if (Array.isArray(val)) return traceText(val[0]);
-                                        if (typeof val === "string") return val;
-                                    }
-                                    if (!isApiFormat && node.inputs && Array.isArray(node.inputs)) {
-                                        const inp = node.inputs.find((i) => i.name === inputName);
-                                        if (inp && inp.link && graph.links) {
-                                            const link = graph.links.find((l) => l[0] === inp.link);
-                                            if (link) return traceText(link[1]);
-                                        }
-                                    }
-                                    if (node.widgets_values && typeof node.widgets_values[0] === "string") return node.widgets_values[0];
-                                    return "";
-                                };
-                                const traceText = (nodeId) => {
-                                    const node = findNode(nodeId);
-                                    if (!node) return "";
-                                    const type = node.class_type;
-                                    if (type === "CLIPTextEncode" || type === "PrimitiveNode" || type === "ShowText" || type === "String Literal") {
-                                        if (node.widgets_values) {
-                                            const val = node.widgets_values.find((v) => typeof v === "string" && v.length > 0);
-                                            if (val) return val;
-                                        }
-                                        return traceInput(node, "text") || traceInput(node, "string") || traceInput(node, "value");
-                                    }
-                                    return "";
-                                };
-
-                                const nodes = isApiFormat ? Object.values(graph) : graph.nodes;
-                                const samplers = nodes.filter((n) => n.class_type && n.class_type.includes("Sampler"));
-                                let bestPos = "",
-                                    bestNeg = "";
-                                samplers.forEach((sampler) => {
-                                    const pos = traceInput(sampler, "positive");
-                                    const neg = traceInput(sampler, "negative");
-                                    if (pos && pos.length > bestPos.length) bestPos = pos;
-                                    if (neg && neg.length > bestNeg.length) bestNeg = neg;
-                                });
-
-                                if (bestPos) metadata.positive_prompt = bestPos;
-                                if (bestNeg) metadata.negative_prompt = bestNeg;
-
-                                if (!metadata.positive_prompt) {
-                                    const textNodes = nodes.filter((n) => n.class_type && (n.class_type.includes("CLIPTextEncode") || n.class_type === "PrimitiveNode"));
-                                    const texts = [];
-                                    textNodes.forEach((n) => {
-                                        if (n.widgets_values)
-                                            n.widgets_values.forEach((v) => {
-                                                if (typeof v === "string" && v.length > 5) texts.push(v);
-                                            });
-                                    });
-                                    texts.sort((a, b) => b.length - a.length);
-                                    if (texts.length > 0) metadata.positive_prompt = texts[0];
-                                    if (texts.length > 1) metadata.negative_prompt = texts[1];
-                                }
-                            } catch (e) {
-                                logError("ComfyUI Graph Parse Error", e);
-                            }
+                                parseComfyGraph(graph, metadata);
+                            } catch (e) {}
                         }
 
                         this.metadataCache.set(cacheKey, metadata);
@@ -702,20 +834,45 @@ app.registerExtension({
 
                     const metadata = await this.fetchMetadata(imgInfo);
 
-                    let newTooltipText = "";
-                    if (metadata.positive_prompt) {
-                        newTooltipText = `Prompt:\n${metadata.positive_prompt}`;
-                    } else {
-                        newTooltipText = "Metadata:\nNo prompt found in image data.";
+                    const escapeHtml = (unsafe) => {
+                        if (unsafe == null) return "";
+                        return new Option(String(unsafe)).innerHTML;
+                    };
+
+                    const pos = metadata.positive_prompt;
+                    const neg = metadata.negative_prompt;
+                    const hasPos = pos && pos.length > 0;
+                    const hasNeg = neg && neg.length > 0;
+
+                    let tooltipText = "";
+
+                    if (!hasPos && !hasNeg) {
+                        tooltipText = "Status:\nNo prompt Metadata detected.";
+                    } 
+                    else {
+                        const format = (txt) => escapeHtml(txt).replace(/\n/g, "<br>");
+
+                        if (hasPos) {
+                            tooltipText += `<span style="color: #6f6; font-weight: bold;">Prompt:</span> ${format(pos)}`;
+                        }
+                        
+                        if (hasPos && hasNeg) {
+                            tooltipText += `<br><br>`;
+                        }
+
+                        if (hasNeg) {
+                            tooltipText += `<span style="color: #f66; font-weight: bold;">Negative:</span> ${format(neg)}`;
+                        }
                     }
-                    itemElement.dataset.tooltipText = newTooltipText;
+
+                    itemElement.dataset.tooltipText = tooltipText;
 
                     const activeTooltip = document.querySelector(".mad-tooltip.visible");
                     if (activeTooltip && itemElement.matches(":hover")) {
-                        if (newTooltipText.includes("<")) {
-                            activeTooltip.innerHTML = newTooltipText;
+                        if (tooltipText.includes("<")) {
+                            activeTooltip.innerHTML = tooltipText;
                         } else {
-                            const parts = String(newTooltipText).split("\n");
+                            const parts = tooltipText.split("\n");
                             const title = parts[0] ?? "";
                             const body = parts.slice(1).join("\n");
                             activeTooltip.innerHTML = `<strong>${title}</strong>${body}`;
