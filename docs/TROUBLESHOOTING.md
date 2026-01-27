@@ -382,15 +382,15 @@
 
 | Node | Error | Meaning | Action |
 | :--- | :--- | :--- | :--- |
-| <sup style="color:#90caf9">●</sup> **Multi Scheduled LoRA Loader** | `LoRA not found: {name}` | File doesn't exist in models/loras | Check path and filename |
-| <sup style="color:#90caf9">●</sup> **Multi Scheduled LoRA Loader** | `Architecture mismatch` | LoRA/checkpoint incompatible | Use matching architectures or ignore warning |
-| <sup style="color:#90caf9">●</sup> **Multi Scheduled LoRA Loader** | `Invalid keyframe data` | Malformed string syntax | Check syntax format in external schedule |
-| <sup style="color:#90caf9">●</sup> **Multi Scheduled LoRA Loader** | `Hook application failed` | CLIP hooks not connected | Verify node connections |
-| <sup style="color:#90caf9">●</sup> **Multi Scheduled LoRA Loader** | `Analysis Data Unavailable` | LoRA not analyzed | Click refresh button in settings |
-| <sup style="color:#90caf9">●</sup> **Multi Scheduled LoRA Loader** | `Metadata Missing` | Block metadata not loaded | Re-analyze LoRA or clear cache |
-| <sup style="color:#f48fb1">●</sup> **Visual Prompt Gallery** | `Image not found` | File missing from input directory | Check file exists in visual_gallery folder |
-| <sup style="color:#f48fb1">●</sup> **Visual Prompt Gallery** | `Metadata extraction failed` | EXIF data corrupted or missing | Try different image format |
-| <sup style="color:#f48fb1">●</sup> **Visual Prompt Gallery** | `Gallery initialization error` | JavaScript/CSS not loaded | Check console and reload |
+| 🔵 **Multi Scheduled LoRA Loader** | `LoRA not found: {name}` | File doesn't exist in models/loras | Check path and filename |
+| 🔵 **Multi Scheduled LoRA Loader** | `Architecture mismatch` | LoRA/checkpoint incompatible | Use matching architectures or ignore warning |
+| 🔵 **Multi Scheduled LoRA Loader** | `Invalid keyframe data` | Malformed string syntax | Check syntax format in external schedule |
+| 🔵 **Multi Scheduled LoRA Loader** | `Hook application failed` | CLIP hooks not connected | Verify node connections |
+| 🔵 **Multi Scheduled LoRA Loader** | `Analysis Data Unavailable` | LoRA not analyzed | Click refresh button in settings |
+| 🔵 **Multi Scheduled LoRA Loader** | `Metadata Missing` | Block metadata not loaded | Re-analyze LoRA or clear cache |
+| 🟣 **Visual Prompt Gallery** | `Image not found` | File missing from input directory | Check file exists in visual_gallery folder |
+| 🟣 **Visual Prompt Gallery** | `Metadata extraction failed` | EXIF data corrupted or missing | Try different image format |
+| 🟣 **Visual Prompt Gallery** | `Gallery initialization error` | JavaScript/CSS not loaded | Check console and reload |
 
 ---
 

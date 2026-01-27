@@ -4,6 +4,10 @@ import logging
 import torch
 import comfy.utils
 import folder_paths
+import comfy.lora
+import comfy.model_management
+import comfy.float
+from comfy.model_patcher import get_key_weight, string_to_seed
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -20,7 +24,7 @@ LOG_PREFIX = "[MAD-NODES-OPS]"
 
 
 UI_CONFIG = {
-    "config_version": "1.2.0",
+    "config_version": "1.2.2",
     "BLOCK_ORDER": [
         "clip",
         "input",
@@ -686,3 +690,105 @@ class LoraOps:
             item["points"].sort(key=lambda p: p["x"])
             lora_list.append(item)
         return lora_list
+
+
+class MadPatcherOverrides:
+    @staticmethod
+    def _is_zero(value):
+        """
+        Safely checks if a value (float, int, or Tensor) is effectively zero.
+        Prevents 'Boolean value of Tensor is ambiguous' errors.
+        """
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 1:
+                return value.item() == 0.0
+            return False
+        return value == 0.0
+
+    @staticmethod
+    def optimized_calculate_weight(patches, weight, key, intermediate_dtype=None):
+        """
+        Optimized replacement for comfy.lora.calculate_weight.
+        1. Filters out patches with 0.0 strength to save compute/memory.
+        2. Returns early if no patches remain.
+        """
+        clean_patches = []
+        for p in patches:
+            if MadPatcherOverrides._is_zero(p[0]):
+                continue
+            clean_patches.append(p)
+
+        if not clean_patches:
+            return weight
+
+        return comfy.lora.calculate_weight(
+            clean_patches, weight, key, intermediate_dtype=intermediate_dtype
+        )
+
+    @staticmethod
+    def patch_hook_weight_to_device(
+        self,
+        hooks,
+        combined_patches,
+        key,
+        original_weights,
+        memory_counter,
+        *args,
+        **kwargs,
+    ):
+        """
+        Monkey-patch target for ModelPatcher.patch_hook_weight_to_device.
+        """
+        import comfy.hooks
+
+        if key not in combined_patches:
+            return
+
+        weight, set_func, convert_func = get_key_weight(self.model, key)
+
+        if key not in self.hook_backup:
+            target_device = self.offload_device
+            if self.hook_mode == comfy.hooks.EnumHookMode.MaxSpeed:
+                used = memory_counter.use(weight)
+                if used:
+                    target_device = weight.device
+            self.hook_backup[key] = (
+                weight.to(device=target_device, copy=True),
+                weight.device,
+            )
+
+        temp_weight = comfy.model_management.cast_to_device(
+            weight, weight.device, torch.float32, copy=True
+        )
+        if convert_func is not None:
+            temp_weight = convert_func(temp_weight, inplace=True)
+
+        out_weight = MadPatcherOverrides.optimized_calculate_weight(
+            combined_patches[key], temp_weight, key
+        )
+
+        if original_weights is not None:
+            del original_weights[key]
+
+        if set_func is None:
+            out_weight = comfy.float.stochastic_rounding(
+                out_weight, weight.dtype, seed=string_to_seed(key)
+            )
+            comfy.utils.copy_to_param(self.model, key, out_weight)
+        else:
+            set_func(out_weight, inplace_update=True, seed=string_to_seed(key))
+
+        if self.hook_mode == comfy.hooks.EnumHookMode.MaxSpeed:
+            target_device = self.offload_device
+            used = memory_counter.use(weight)
+            if used:
+                target_device = weight.device
+            self.cached_hook_patches.setdefault(hooks, {})
+            self.cached_hook_patches[hooks][key] = (
+                out_weight.to(device=target_device, copy=False),
+                weight.device,
+            )
+
+        del temp_weight
+        del out_weight
+        del weight

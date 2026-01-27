@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 import comfy.hooks
 import comfy.utils
+import types
 
 from .modules.lora_inspector import LoRAInspector
-from .modules.lora_ops import LoraOps
+from .modules.lora_ops import LoraOps, MadPatcherOverrides
 
 NODE_DIR_NAME = Path(__file__).parent.name
 
@@ -271,6 +272,9 @@ class MultiScheduledLoraLoader:
 
         if model:
             model_out = model.clone()
+            model_out.patch_hook_weight_to_device = types.MethodType(
+                MadPatcherOverrides.patch_hook_weight_to_device, model_out
+            )
             model_out.register_all_hook_patches(
                 final_group,
                 comfy.hooks.create_target_dict(comfy.hooks.EnumWeightTarget.Model),

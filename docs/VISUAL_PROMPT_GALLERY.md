@@ -10,16 +10,16 @@
 
 [Gallery Interface](#gallery-interface) | [Importing Images](#importing-images) | [Metadata Extraction](#supported-metadata) | [Settings](#settings)
 
+</div>
+
 ---
 
-> ⚠️
+> [!WARNING]
 > **Incompatibility with ComfyUI Nodes 2.0**
 >
 > This node currently relies on the standard LiteGraph interface. It **will not render** if you have enabled the experimental "Nodes 2.0" (Vue-based) frontend in ComfyUI settings. Please disable the new frontend to use the Gallery.
 
 ---
-
-</div>
 
  ## Overview
 
@@ -57,19 +57,19 @@ Instead of:
 
 ## Getting Started
 
-### <span style="color:#26a69a">Step 1:</span> Add the Node
+### **Step 1:** Add the Node
 
 Right-click canvas → `Add Node` → `utils` → **Visual Prompt Gallery (EXIF)**
 
-### <span style="color:#26a69a">Step 2:</span> Import Images
+### **Step 2:** Import Images
 
 Drag and drop images from your file system directly onto the node.
 
-### <span style="color:#26a69a">Step 3:</span> Connect Outputs
+### **Step 3:** Connect Outputs
 
 Connect the `positive_prompt` and `negative_prompt` outputs to your text encoding nodes.
 
-### <span style="color:#26a69a">Step 4:</span> Select and Generate
+### **Step 4:** Select and Generate
 
 Click an image in the gallery → Run your workflow → Prompts are automatically populated.
 
@@ -103,7 +103,7 @@ Click an image in the gallery → Run your workflow → Prompts are automaticall
 
 ### Fullscreen Viewer
 
-- Click anywhere or press <kbd>Escape</kbd> to close
+- Click anywhere or press <kbd>Esc</kbd> to close
 - View images at full resolution
 - Examine details before committing to a style
 

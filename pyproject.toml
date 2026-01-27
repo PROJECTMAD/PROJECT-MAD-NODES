@@ -1,7 +1,7 @@
 [project]
 name = "project-mad-nodes"
 description = "Advanced LoRA scheduling with visual curves, block weights (LBW), and architecture detection. Includes a visual prompt gallery for workflow metadata management. Strongly recommend using LoRA Manager for metadata building."
-version = "1.2.1"
+version = "1.2.2"
 license = { file = "LICENSE" }
 
 authors = [

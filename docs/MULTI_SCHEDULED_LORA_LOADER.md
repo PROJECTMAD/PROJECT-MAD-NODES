@@ -117,10 +117,10 @@ This prevents a LoRA from affecting steps before/after your intended range.
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` | Redo |
-| `Escape` | Close dialogs |
-| `Enter` | Confirm input (text dialogs) |
+| <kbd>Ctrl</kbd>+<kbd>Z</kbd> | Undo |
+| <kbd>Ctrl</kbd>+<kbd>Y</kbd> | Redo |
+| <kbd>Esc</kbd> | Close dialogs |
+| <kbd>Enter</kbd> | Confirm input (text dialogs) |
 
 ### Sidebar controls (per LoRA)
 
@@ -156,10 +156,10 @@ Block weights let you scale a LoRA’s effect per detected block. This allows yo
 
 When editing block weights or viewing the heatmap, colors indicate the conceptual effect of the blocks:
 
-*   <span style="color:#26a69a">■</span> **POSE (Structure):** Input Blocks (Early). Controls composition and shape.
-*   <span style="color:#ffa726">■</span> **IDENTITY (Concept):** Middle Blocks. Controls the main subject and core concepts.
-*   <span style="color:#ab47bc">■</span> **STYLE (Art):** Output Blocks (Early/Mid). Controls lighting, color palette, and artistic style.
-*   <span style="color:#29b6f6">■</span> **DETAILS (Texture):** Output Blocks (Late). Controls fine pixel details and noise.
+*   🟩 **POSE (Structure):** Input Blocks (Early). Controls composition and shape.
+*   🟧 **IDENTITY (Concept):** Middle Blocks. Controls the main subject and core concepts.
+*   🟪 **STYLE (Art):** Output Blocks (Early/Mid). Controls lighting, color palette, and artistic style.
+*   🟦 **DETAILS (Texture):** Output Blocks (Late). Controls fine pixel details and noise.
 
 ---
 

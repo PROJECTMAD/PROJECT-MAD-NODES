@@ -2,6 +2,11 @@
 
 All major and minor version changes will be documented in this file.
 
+## [1.2.2] - 2026-01-27
+### Fixed
+- **Multi Scheduled LoRA Loader:**
+  - **Zero-Strength Optimization:** Implemented a monkey-patch for `patch_hook_weight_to_device` to explicitly skip LoRA calculations when strength is 0.0. This prevents floating-point inaccuracies from slightly altering generation when a LoRA is supposed to be completely inactive at specific keyframes.
+
 ## [1.2.1] - 2026-01-22
 ### Changed
 - **Visual Prompt Gallery:**

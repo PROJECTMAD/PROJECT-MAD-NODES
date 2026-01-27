@@ -451,10 +451,10 @@ Presets are defined in `modules/lora_ops.py` under `UI_CONFIG["PRESET_STRATEGIES
 
 The backend maps these presets to specific block IDs based on the detected architecture:
 
-*   <span style="color:#26a69a">■</span> **POSE (Structure):** Input Blocks / Double Blocks (Early).
-*   <span style="color:#ffa726">■</span> **IDENTITY (Concept):** Middle Blocks.
-*   <span style="color:#ab47bc">■</span> **STYLE (Art):** Output Blocks (Early/Mid).
-*   <span style="color:#29b6f6">■</span> **DETAILS (Texture):** Output Blocks (Late).
+*   🟩 **POSE (Structure):** Input Blocks / Double Blocks (Early).
+*   🟧 **IDENTITY (Concept):** Middle Blocks.
+*   🟪 **STYLE (Art):** Output Blocks (Early/Mid).
+*   🟦 **DETAILS (Texture):** Output Blocks (Late).
 
 ---
 

@@ -736,9 +736,32 @@ export class MultiCurveEditor {
         this.canvas = document.createElement("canvas");
         this.canvas.className = "mad-canvas";
         this.canvasContainer.appendChild(this.canvas);
+
         const statusBar = document.createElement("div");
         statusBar.className = "mad-status-bar";
-        statusBar.innerHTML = `<span>${TEXT.statusHelp}</span><span class="mad-opacity-60">${TEXT.statusBrand}</span>`;
+
+        const statusLeft = document.createElement("span");
+        statusLeft.innerHTML = TEXT.statusHelp;
+
+        const statusRight = document.createElement("div");
+        statusRight.className = "mad-status-right";
+
+        const reportBtn = document.createElement("div");
+        reportBtn.className = "mad-report-btn";
+        reportBtn.innerHTML = ICONS.github;
+        attachMadTooltip(reportBtn, TEXT.reportBug);
+        reportBtn.onclick = () => window.open("https://github.com/PROJECTMAD/PROJECT-MAD-NODES/issues", "_blank");
+
+        const brandSpan = document.createElement("span");
+        brandSpan.className = "mad-opacity-60";
+        brandSpan.textContent = TEXT.statusBrand;
+
+        statusRight.appendChild(reportBtn);
+        statusRight.appendChild(brandSpan);
+
+        statusBar.appendChild(statusLeft);
+        statusBar.appendChild(statusRight);
+
         contentArea.appendChild(header);
         contentArea.appendChild(this.canvasContainer);
         contentArea.appendChild(statusBar);

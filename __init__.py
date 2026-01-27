@@ -27,7 +27,7 @@ executor = ThreadPoolExecutor(max_workers=2)
 
 PACKAGE_NAME = "PROJECT-MAD-NODES"
 WEB_DIRECTORY = "./js"
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 
 
 @server.PromptServer.instance.routes.get("/mad-nodes/lora-preview")

@@ -244,6 +244,7 @@ export const TEXT = {
     undoTitle: "Undo (Ctrl+Z)",
     redoTitle: "Redo (Ctrl+Y)",
     historyTitle: "History",
+    reportBug: "Report a Bug",
     fit: "Fit",
     discard: "Discard",
     save: "Save",

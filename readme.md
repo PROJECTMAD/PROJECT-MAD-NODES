@@ -2,22 +2,22 @@
 
 # PROJECT-MAD-NODES
 
-[![Version](https://img.shields.io/badge/version-1.2.1-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
+[![Version](https://img.shields.io/badge/version-1.2.2-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
+[![Changelog](https://img.shields.io/badge/Changelog-View-orange?logo=readme&logoColor=white)](./CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)]()
 
 **Advanced LoRA Scheduling and Visual Prompt Management for ComfyUI**
 
 [Installation](#installation) | [Nodes](#nodes) | [Technical Docs](./docs/TECHNICAL.md) | [Troubleshooting](./docs/TROUBLESHOOTING.md)
+</div>
 
 ---
 
-> ⚠️
+> [!WARNING]
 > **Compatibility Note: ComfyUI Nodes 2.0**
 >
 > **Visual Prompt Gallery** is currently **incompatible** with the new experimental "Nodes 2.0" (Vue-based) rendering system. If you have enabled new frontend in ComfyUI settings, gallery interface will not appear. **Multi Scheduled LoRA Loader** remains fully functional in both versions.
-
-</div>
 
  ## Introduction
 
@@ -25,14 +25,14 @@
 <tr>
 <td width="50%" valign="top">
 
-### <span style="color:#7e57c2">Dynamic LoRA Control</span>
+### 🟣 Dynamic LoRA Control
 
 Traditional LoRA loaders apply **static strength** throughout generation. Multi Scheduled LoRA Loader lets you **draw curves** that control strength over time - fade-ins, fade-outs, complex patterns, or per block weighting.
 
 </td>
 <td width="50%" valign="top">
 
-### <span style="color:#42a5f5">Visual Inspiration</span>
+### 🔵 Visual Inspiration
 
 Visual Prompt Gallery is an **integrated image browser** that extracts prompts from your reference images. Switch creations and styles instantly without leaving your workflow.
 
@@ -44,7 +44,7 @@ Visual Prompt Gallery is an **integrated image browser** that extracts prompts f
 
 ## Installation
 
-### Method 1: ComfyUI Manager <sup style="color:#26a69a">(Recommended)</sup>
+### Method 1: ComfyUI Manager (Recommended)
 
 1. Open **ComfyUI Manager** in your ComfyUI interface
 2. Click **Install Custom Nodes**
