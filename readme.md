@@ -2,7 +2,7 @@
 
 # PROJECT-MAD-NODES
 
-[![Version](https://img.shields.io/badge/version-1.2.2-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
+[![Version](https://img.shields.io/badge/version-1.2.3-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
 [![Changelog](https://img.shields.io/badge/Changelog-View-orange?logo=readme&logoColor=white)](./CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)]()

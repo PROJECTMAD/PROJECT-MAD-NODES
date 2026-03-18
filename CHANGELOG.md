@@ -2,6 +2,18 @@
 
 All major and minor version changes will be documented in this file.
 
+## [1.2.3] - 2026-03-18
+### Fixed
+- **General:**
+  - Multiple performance improvements to the frontend.
+
+### Changed
+- **Visual Prompt Gallery:**
+  - Improved prompt extraction traversal logic, so that even branching connections should work.
+  - Migrated from DOM-based gallery to Canvas-based for better performance and responsiveness.
+  - Tooltips are no longer displayed when hovering over images, due to canvas limitations.
+  - Overall UX is worse (thanks LiteGraph), but you can now slap thousands of images without performance degradation. Hopefully...
+
 ## [1.2.2] - 2026-01-27
 ### Fixed
 - **Multi Scheduled LoRA Loader:**

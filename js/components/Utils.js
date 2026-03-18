@@ -41,7 +41,11 @@ export function attachMadTooltip(element, text) {
                 document.body.appendChild(tip);
             }
 
-            const rect = tip.getBoundingClientRect();
+            if (!tip._madRect) {
+                const rect = tip.getBoundingClientRect();
+                tip._madRect = { width: rect.width, height: rect.height };
+            }
+            const rect = tip._madRect;
             const winW = window.innerWidth;
             const winH = window.innerHeight;
 

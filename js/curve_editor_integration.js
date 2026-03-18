@@ -197,6 +197,9 @@ app.registerExtension({
                 const originalOnDrawForeground = this.onDrawForeground;
                 this.onDrawForeground = function (ctx) {
                     if (originalOnDrawForeground) originalOnDrawForeground.apply(this, arguments);
+                    const now = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+                    if (this._lastUpstreamPoll && now - this._lastUpstreamPoll < 250) return;
+                    this._lastUpstreamPoll = now;
                     if (this.inputs) {
                         let stateChanged = false;
                         for (let name of [WIDGET_NAMES.STRING, WIDGET_NAMES.HOOKS]) {
