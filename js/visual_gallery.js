@@ -11,7 +11,7 @@ import { LOG_PREFIX } from "./components/Constants.js";
 
 if (!window.ExifReaderScriptLoaded) {
     const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/exifreader@4.32.0/dist/exif-reader.min.js";
+    script.src = new URL("./exif-reader.js", import.meta.url).href;
     script.onload = () => {
         window.ExifReaderScriptLoaded = true;
     };
@@ -71,9 +71,10 @@ app.registerExtension({
 
                 const widgetNames = ["positive_prompt", "negative_prompt", "image_list", "current_image", "gallery_settings"];
 
+                const hiddenWidgetSize = () => [0, -4];
                 const hideWidget = (w) => {
                     w.type = "hidden";
-                    w.computeSize = () => [0, -4];
+                    w.computeSize = hiddenWidgetSize;
                     w.visible = false;
                 };
 
@@ -90,7 +91,6 @@ app.registerExtension({
                 const originalOnConfigure = this.onConfigure;
                 this.onConfigure = function () {
                     if (originalOnConfigure) originalOnConfigure.apply(this, arguments);
-                    hideWidgets();
                     this.drawWidgets = function () {};
                     this.widgets_visible = false;
                 };
@@ -500,7 +500,6 @@ app.registerExtension({
                 this.onDrawForeground = function (ctx) {
                     if (originalOnDrawForeground) originalOnDrawForeground.apply(this, arguments);
                     if (!this.graph || this.flags.collapsed) return;
-                    hideWidgets();
                     drawToolbar(ctx);
                     drawGallery(ctx);
                 };
@@ -684,6 +683,7 @@ app.registerExtension({
                     
                 };
 
+                const WHEEL_LISTENER_OPTIONS = { passive: true, capture: true };
                 this._onCanvasWheel = (e) => {
                     if (!this.graph || this.flags.collapsed) return;
                     const canvas = app.canvas;
@@ -699,21 +699,19 @@ app.registerExtension({
                     const content = layout.content;
                     if (localX >= content.x && localX <= content.x + content.w &&
                         localY >= content.y && localY <= content.y + content.h) {
-                        
                         const delta = e.deltaY || (e.detail ? e.detail * 40 : 0);
+                        e.stopImmediatePropagation();
                         if (delta !== 0) {
                             this._galleryScrollY += delta > 0 ? 60 : -60;
                             const maxScroll = Math.max(0, layout.rows * layout.rowH + GAP * Math.max(0, layout.rows - 1) - content.h);
                             this._galleryScrollY = Math.max(0, Math.min(this._galleryScrollY, maxScroll));
                             this.setDirtyCanvas(true, true);
-                            e.preventDefault();
-                            e.stopPropagation();
                         }
                     }
                 };
                 
                 if (app.canvas && app.canvas.canvas) {
-                    app.canvas.canvas.addEventListener("wheel", this._onCanvasWheel, { passive: false, capture: true });
+                    app.canvas.canvas.addEventListener("wheel", this._onCanvasWheel, WHEEL_LISTENER_OPTIONS);
                 }
 
                 const originalOnMouseUp = this.onMouseUp;
@@ -732,7 +730,7 @@ app.registerExtension({
                     this._galleryButtons = {};
                     this._teardownCanvasDnD();
                     if (this._onCanvasWheel && app.canvas && app.canvas.canvas) {
-                        app.canvas.canvas.removeEventListener("wheel", this._onCanvasWheel, { passive: false, capture: true });
+                        app.canvas.canvas.removeEventListener("wheel", this._onCanvasWheel, WHEEL_LISTENER_OPTIONS);
                     }
                 };
 
