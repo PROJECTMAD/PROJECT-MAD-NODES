@@ -2249,6 +2249,146 @@
     background: #444;
 }
 
+.mad-gallery-upload-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(6px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    user-select: none;
+}
+
+.mad-gallery-upload-modal {
+    width: min(80vw, 560px);
+    max-height: 82vh;
+    background: #121212;
+    border: 1px solid #333;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+    font-family: sans-serif;
+    color: #d0d0d0;
+}
+
+.mad-gallery-upload-header {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #bbb;
+}
+
+.mad-gallery-upload-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mad-gallery-upload-section {
+    background: #161616;
+    border: 1px solid #262626;
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mad-gallery-upload-title {
+    font-size: 10px;
+    color: #9a9a9a;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.mad-gallery-upload-btn {
+    align-self: flex-start;
+    background: #2a2a2a;
+    color: #f0f0f0;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.mad-gallery-upload-btn:hover {
+    background: #3a3a3a;
+}
+
+.mad-gallery-upload-textarea {
+    width: 100%;
+    min-height: 70px;
+    background: #101010;
+    color: #e0e0e0;
+    border: 1px solid #2b2b2b;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 11px;
+    resize: vertical;
+}
+
+.mad-gallery-upload-paste {
+    border: 1px dashed #3a3a3a;
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 11px;
+    color: #bdbdbd;
+    background: #101010;
+    cursor: text;
+    min-height: 24px;
+}
+
+.mad-gallery-upload-paste:focus {
+    outline: none;
+    border-color: #4f4f4f;
+    box-shadow: 0 0 0 1px rgba(120, 120, 120, 0.25);
+}
+
+.mad-gallery-upload-paste:empty::before {
+    content: attr(data-placeholder);
+    color: #8f8f8f;
+    pointer-events: none;
+}
+
+.mad-gallery-upload-status {
+    min-height: 16px;
+    font-size: 10px;
+    color: #9c9c9c;
+}
+
+.mad-gallery-upload-status[data-kind="warn"] {
+    color: #d6b46b;
+}
+
+.mad-gallery-upload-status[data-kind="error"] {
+    color: #d97d7d;
+}
+
+.mad-gallery-upload-close {
+    align-self: flex-end;
+    background: #333;
+    color: #ddd;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.mad-gallery-upload-close:hover {
+    background: #444;
+}
+
 .mad-gallery-close-btn {
     position: absolute;
     top: 20px;

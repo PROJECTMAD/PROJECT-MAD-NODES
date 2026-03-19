@@ -1,6 +1,7 @@
 import json
 import struct
 import logging
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -198,6 +199,8 @@ class LoRAInspector:
             return "HIDREAM"
         if "chroma" in t:
             return "CHROMA"
+        if re.search(r"(^|[^a-z0-9])anima($|[^a-z0-9])", t):
+            return "ANIMA"
         if "qwen" in t:
             return "QWEN"
         if "aura" in t:

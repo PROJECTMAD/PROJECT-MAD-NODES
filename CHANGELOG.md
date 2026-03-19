@@ -2,6 +2,16 @@
 
 All major and minor version changes will be documented in this file.
 
+## [1.2.4] - 2026-03-19
+### Added
+- **Multi Scheduler LoRA Loader:**
+  - Added model architecture detection for diffusion models
+  - Added support for Anima (circlestone-labs)
+
+- **Visual Prompt Gallery:**
+  - Added image hashing (duplication check)
+  - Added multiple ways to upload image file(s)
+
 ## [1.2.3] - 2026-03-18
 ### Fixed
 - **General:**

@@ -426,6 +426,7 @@ export const BADGE_CONFIG = [
     { key: "QWEN", code: "QWEN", color: "#5c47d2" },
     { key: "AURA", code: "AURA", color: "#ff7043" },
     { key: "HYVID", code: "HY", color: "#8d6e63" },
+    { key: "ANIMA", code: "ANIM", color: "#ffb74d" },
     { key: "FLUX", code: "FLUX", color: "#26a69a" },
     { key: "PONY", code: "PONY", color: "#ab47bc" },
     { key: "NOOB", code: "NAI", color: "#e91e63" },

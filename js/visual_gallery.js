@@ -102,7 +102,8 @@ app.registerExtension({
                  */
 
                 const BASE_TITLE_HEIGHT = (window.LiteGraph && LiteGraph.NODE_TITLE_HEIGHT) ? LiteGraph.NODE_TITLE_HEIGHT : 30;
-                const TOOLBAR_HEIGHT = 22;
+                const MAIN_TOOLBAR_HEIGHT = 22;
+                const TOOLBAR_HEIGHT = MAIN_TOOLBAR_HEIGHT;
                 const PADDING = 6;
                 const GAP = 6;
                 const MAX_THUMB_CACHE = 60;
@@ -112,12 +113,19 @@ app.registerExtension({
                 this._galleryHoverIndex = -1;
                 this._selectedImageName = null;
                 this._showPlaceholder = true;
+                this._processingStatus = "";
                 this._thumbCache = new Map();
                 this._galleryButtons = {};
                 this._lastLayout = null;
 
                 this.showPlaceholder = (show) => {
                     this._showPlaceholder = !!show;
+                    this.setDirtyCanvas(true, true);
+                };
+                this._setProcessingStatus = (text) => {
+                    const next = text || "";
+                    if (next === this._processingStatus) return;
+                    this._processingStatus = next;
                     this.setDirtyCanvas(true, true);
                 };
 
@@ -246,43 +254,16 @@ app.registerExtension({
                     const h = TOOLBAR_HEIGHT;
 
                     ctx.fillStyle = "#111";
-                    ctx.fillRect(x, y, w, h);
+                    ctx.fillRect(x, y, w, MAIN_TOOLBAR_HEIGHT);
 
                     ctx.fillStyle = "#888";
                     ctx.font = "10px sans-serif";
                     ctx.textBaseline = "middle";
-                    ctx.fillText("GALLERY", x + 6, y + h / 2);
-
-                    const buttons = [
-                        { id: "square", label: "SQUARE" },
-                        { id: "landscape", label: "LANDSCAPE" },
-                        { id: "portrait", label: "PORTRAIT" },
-                    ];
-                    const btnW = 72;
-                    const btnH = 18;
-                    const gap = 4;
-                    const totalW = buttons.length * btnW + (buttons.length - 1) * gap;
-                    const startX = x + (w - totalW) / 2;
-                    const btnY = y + (h - btnH) / 2;
-
-                    this._galleryButtons = {};
-
-                    buttons.forEach((btn, idx) => {
-                        const bx = startX + idx * (btnW + gap);
-                        const isActive = this.galleryState.ratio === btn.id;
-                        ctx.fillStyle = isActive ? "#444" : "#222";
-                        ctx.strokeStyle = isActive ? "#666" : "#333";
-                        ctx.lineWidth = 1;
-                        ctx.fillRect(bx, btnY, btnW, btnH);
-                        ctx.strokeRect(bx + 0.5, btnY + 0.5, btnW - 1, btnH - 1);
-                        ctx.fillStyle = isActive ? "#fff" : "#888";
-                        ctx.textAlign = "center";
-                        ctx.fillText(btn.label, bx + btnW / 2, btnY + btnH / 2);
-                        this._galleryButtons[`ratio:${btn.id}`] = { x: bx, y: btnY, w: btnW, h: btnH };
-                    });
 
                     const clearW = 50;
                     const clearX = x + w - clearW - 6;
+                    const btnH = 18;
+                    const btnY = y + (MAIN_TOOLBAR_HEIGHT - btnH) / 2;
                     ctx.fillStyle = "#222";
                     ctx.strokeStyle = "#333";
                     ctx.fillRect(clearX, btnY, clearW, btnH);
@@ -291,6 +272,78 @@ app.registerExtension({
                     ctx.textAlign = "center";
                     ctx.fillText("CLEAR", clearX + clearW / 2, btnY + btnH / 2);
                     this._galleryButtons.clear = { x: clearX, y: btnY, w: clearW, h: btnH };
+
+                    const label = "GALLERY";
+                    const labelW = Math.ceil(ctx.measureText(label).width);
+                    const uploadW = 58;
+                    const ratioButtons = [
+                        { id: "square", label: "SQUARE" },
+                        { id: "landscape", label: "LANDSCAPE" },
+                        { id: "portrait", label: "PORTRAIT" },
+                    ];
+                    const gapLU = 2;
+                    const minGroupGap = 6;
+                    const leftX = x + 6;
+                    const innerW = Math.max(0, w - 12);
+                    const leftGroupW = labelW + gapLU + uploadW;
+                    const maxRatioGroupW = Math.max(0, innerW - leftGroupW - clearW - minGroupGap * 2);
+                    const ratioCount = ratioButtons.length;
+                    let ratioW = 64;
+                    let ratioGap = 4;
+                    const calcRatioGroupW = (rw, rg) => ratioCount * rw + (ratioCount - 1) * rg;
+                    let ratioGroupW = calcRatioGroupW(ratioW, ratioGap);
+                    if (maxRatioGroupW <= 0) {
+                        ratioW = 0;
+                        ratioGap = 0;
+                        ratioGroupW = 0;
+                    } else if (ratioGroupW > maxRatioGroupW) {
+                        ratioGap = 2;
+                        ratioW = Math.floor((maxRatioGroupW - (ratioCount - 1) * ratioGap) / ratioCount);
+                        if (ratioW < 48) ratioW = Math.max(36, ratioW);
+                        ratioGroupW = calcRatioGroupW(ratioW, ratioGap);
+                        if (ratioGroupW > maxRatioGroupW) {
+                            ratioGap = 0;
+                            ratioW = Math.floor(maxRatioGroupW / ratioCount);
+                            ratioGroupW = calcRatioGroupW(ratioW, ratioGap);
+                        }
+                    }
+                    const remaining = innerW - leftGroupW - ratioGroupW - clearW;
+                    const groupGap = remaining > 0 ? remaining / 2 : 0;
+                    let cursorX = leftX;
+
+                    this._galleryButtons = { clear: this._galleryButtons.clear };
+
+                    ctx.fillStyle = "#888";
+                    ctx.textAlign = "left";
+                    ctx.fillText(label, cursorX, y + MAIN_TOOLBAR_HEIGHT / 2);
+                    cursorX += labelW + gapLU;
+
+                    ctx.fillStyle = "#222";
+                    ctx.strokeStyle = "#333";
+                    ctx.lineWidth = 1;
+                    ctx.fillRect(cursorX, btnY, uploadW, btnH);
+                    ctx.strokeRect(cursorX + 0.5, btnY + 0.5, uploadW - 1, btnH - 1);
+                    ctx.fillStyle = "#888";
+                    ctx.textAlign = "center";
+                    ctx.fillText("UPLOAD", cursorX + uploadW / 2, btnY + btnH / 2);
+                    this._galleryButtons.upload = { x: cursorX, y: btnY, w: uploadW, h: btnH };
+                    cursorX += uploadW + groupGap;
+
+                    let bx = cursorX;
+                    ratioButtons.forEach((btn, idx) => {
+                        const isActive = this.galleryState.ratio === btn.id;
+                        ctx.fillStyle = isActive ? "#444" : "#222";
+                        ctx.strokeStyle = isActive ? "#666" : "#333";
+                        ctx.lineWidth = 1;
+                        ctx.fillRect(bx, btnY, ratioW, btnH);
+                        ctx.strokeRect(bx + 0.5, btnY + 0.5, ratioW - 1, btnH - 1);
+                        ctx.fillStyle = isActive ? "#fff" : "#888";
+                        ctx.textAlign = "center";
+                        ctx.fillText(btn.label, bx + ratioW / 2, btnY + btnH / 2);
+                        this._galleryButtons[`ratio:${btn.id}`] = { x: bx, y: btnY, w: ratioW, h: btnH };
+                        if (idx < ratioButtons.length - 1) bx += ratioW + ratioGap;
+                    });
+
                     ctx.restore();
                 };
 
@@ -314,9 +367,13 @@ app.registerExtension({
                         ctx.font = "12px sans-serif";
                         ctx.textAlign = "center";
                         ctx.textBaseline = "middle";
-                        ctx.fillText("Drag & Drop Images", content.x + content.w / 2, content.y + content.h / 2 - 6);
-                        ctx.font = "10px sans-serif";
-                        ctx.fillText("(Saved to input/visual_gallery)", content.x + content.w / 2, content.y + content.h / 2 + 10);
+                        if (this._processingStatus) {
+                            ctx.fillText(this._processingStatus, content.x + content.w / 2, content.y + content.h / 2);
+                        } else {
+                            ctx.fillText("Drag & Drop Images", content.x + content.w / 2, content.y + content.h / 2 - 6);
+                            ctx.font = "10px sans-serif";
+                            ctx.fillText("(Saved to input/visual_gallery)", content.x + content.w / 2, content.y + content.h / 2 + 10);
+                        }
                         ctx.restore();
                         return;
                     }
@@ -408,6 +465,27 @@ app.registerExtension({
                         }
                     }
 
+                    if (this._processingStatus) {
+                        const pad = 8;
+                        const text = this._processingStatus;
+                        ctx.save();
+                        ctx.font = "11px sans-serif";
+                        ctx.textAlign = "left";
+                        ctx.textBaseline = "middle";
+                        const textW = Math.ceil(ctx.measureText(text).width);
+                        const boxH = 20;
+                        const boxW = Math.min(content.w - pad * 2, textW + pad * 2);
+                        const boxX = content.x + pad;
+                        const boxY = content.y + pad;
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+                        ctx.fillRect(boxX, boxY, boxW, boxH);
+                        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+                        ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
+                        ctx.fillStyle = "#e0e0e0";
+                        ctx.fillText(text, boxX + pad, boxY + boxH / 2);
+                        ctx.restore();
+                    }
+
                     pruneCache();
                     ctx.restore();
                 };
@@ -426,6 +504,7 @@ app.registerExtension({
                     drawToolbar(ctx);
                     drawGallery(ctx);
                 };
+
 
                 const originalOnMouseDown = this.onMouseDown;
                 this.onMouseDown = function (e, pos, graphcanvas) {
@@ -447,6 +526,8 @@ app.registerExtension({
                                 this.updateWidgets({}, null);
                                 this.saveState();
                                 this.showPlaceholder(true);
+                            } else if (key === "upload") {
+                                this.openUploadDialog();
                             }
                             this.setDirtyCanvas(true, true);
                             return true;
@@ -661,8 +742,243 @@ app.registerExtension({
                  * ============================================================================
                  */
 
+                this._getExistingNameSet = () => {
+                    const set = new Set();
+                    for (const item of this.storedImages) {
+                        if (!item || !item.name) continue;
+                        set.add(item.name.toLowerCase());
+                    }
+                    return set;
+                };
+
+                const isImageName = (name) => /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(name || "");
+                const getExtFromType = (type) => {
+                    if (!type || !type.includes("/")) return "png";
+                    return type.split("/")[1] || "png";
+                };
+                const splitName = (name) => {
+                    const safe = name || "";
+                    const dot = safe.lastIndexOf(".");
+                    if (dot > 0 && dot < safe.length - 1) {
+                        return { base: safe.slice(0, dot), ext: safe.slice(dot + 1) };
+                    }
+                    return { base: safe, ext: "" };
+                };
+                const ensureExt = (name, ext) => {
+                    if (!name) return `image.${ext}`;
+                    if (/\.[a-z0-9]+$/i.test(name)) return name;
+                    return `${name}.${ext}`;
+                };
+                const makeUniqueName = (base, ext, existingNames) => {
+                    const safeBase = base && base.trim() ? base.trim() : "image";
+                    const normalizedBase = safeBase.replace(/\s+/g, "_");
+                    let candidate = ensureExt(normalizedBase, ext);
+                    let i = 1;
+                    while (existingNames.has(candidate.toLowerCase())) {
+                        candidate = ensureExt(`${normalizedBase}_${i}`, ext);
+                        i += 1;
+                    }
+                    return candidate;
+                };
+                const makeUniqueNameWithHash = (name, ext, hash, existingNames) => {
+                    const parts = splitName(name);
+                    const base = parts.base || "image";
+                    const safeExt = ext || parts.ext || "png";
+                    const shortHash = (hash || "").slice(0, 6) || "hash";
+                    let candidate = `${base}_${shortHash}.${safeExt}`;
+                    let i = 1;
+                    while (existingNames.has(candidate.toLowerCase())) {
+                        candidate = `${base}_${shortHash}_${i}.${safeExt}`;
+                        i += 1;
+                    }
+                    return candidate;
+                };
+
+                this._hashImagePixels = async (file) => {
+                    if (!file || !window.crypto?.subtle) return null;
+                    let img = null;
+                    let url = null;
+                    let bmp = null;
+                    try {
+                        if (window.createImageBitmap) {
+                            bmp = await createImageBitmap(file);
+                            img = bmp;
+                        } else {
+                            url = URL.createObjectURL(file);
+                            img = await new Promise((resolve, reject) => {
+                                const el = new Image();
+                                el.onload = () => resolve(el);
+                                el.onerror = () => reject(new Error("Image load failed"));
+                                el.src = url;
+                            });
+                        }
+
+                        const w = img.width || img.naturalWidth;
+                        const h = img.height || img.naturalHeight;
+                        if (!w || !h) throw new Error("Invalid image size");
+
+                        const canvas = document.createElement("canvas");
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                        ctx.clearRect(0, 0, w, h);
+                        ctx.drawImage(img, 0, 0, w, h);
+
+                        const data = ctx.getImageData(0, 0, w, h).data;
+                        const rgb = new Uint8Array(w * h * 3);
+                        let j = 0;
+                        for (let i = 0; i < data.length; i += 4) {
+                            const a = data[i + 3] / 255;
+                            rgb[j++] = Math.round(data[i] * a);
+                            rgb[j++] = Math.round(data[i + 1] * a);
+                            rgb[j++] = Math.round(data[i + 2] * a);
+                        }
+
+                        const digest = await window.crypto.subtle.digest("SHA-256", rgb);
+                        const hashArray = Array.from(new Uint8Array(digest));
+                        return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+                    } catch (e) {
+                        return null;
+                    } finally {
+                        if (bmp && bmp.close) bmp.close();
+                        if (url) URL.revokeObjectURL(url);
+                    }
+                };
+
+                this._getGalleryHashMap = async () => {
+                    const names = (this.storedImages || []).map((i) => i?.name).filter(Boolean);
+                    const key = names.join("|");
+                    if (this._galleryHashCacheKey === key && this._galleryHashCache) {
+                        return this._galleryHashCache;
+                    }
+                    if (names.length === 0) {
+                        this._galleryHashCache = new Map();
+                        this._galleryHashCacheKey = "";
+                        return this._galleryHashCache;
+                    }
+                    const hadStatus = !!this._processingStatus;
+                    if (!hadStatus) this._setProcessingStatus(`Indexing ${names.length} images...`);
+                    try {
+                        const resp = await api.fetchApi("/mad-nodes/vpg-hash-lookup", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ filenames: names, subfolder: "visual_gallery" }),
+                        });
+                        if (!resp || resp.status !== 200) throw new Error("Hash lookup failed");
+                        const data = await resp.json();
+                        const map = new Map();
+                        const hashes = data?.hashes || {};
+                        for (const [name, hash] of Object.entries(hashes)) {
+                            if (name && hash) map.set(name, hash);
+                        }
+                        this._galleryHashCache = map;
+                        this._galleryHashCacheKey = key;
+                        return map;
+                    } catch (e) {
+                        this._galleryHashCache = new Map();
+                        this._galleryHashCacheKey = key;
+                        return this._galleryHashCache;
+                    } finally {
+                        if (!hadStatus) this._setProcessingStatus("");
+                    }
+                };
+
+                this._isImageBlob = (blob) => {
+                    if (!blob) return Promise.resolve(false);
+                    if (blob.type && blob.type.startsWith("image/")) return Promise.resolve(true);
+                    return new Promise((resolve) => {
+                        const url = URL.createObjectURL(blob);
+                        const img = new Image();
+                        img.onload = () => {
+                            URL.revokeObjectURL(url);
+                            resolve(true);
+                        };
+                        img.onerror = () => {
+                            URL.revokeObjectURL(url);
+                            resolve(false);
+                        };
+                        img.src = url;
+                    });
+                };
+
                 this.uploadAndProcessFiles = async (files) => {
-                    for (const file of files) {
+                    const list = Array.from(files || []);
+                    if (list.length === 0) return { uploaded: 0, failed: 0, skippedDuplicates: 0, skippedInvalid: 0 };
+                    const existingNames = this._getExistingNameSet();
+                    const existingHashMap = await this._getGalleryHashMap();
+                    const existingHashes = new Set(existingHashMap ? existingHashMap.values() : []);
+                    const seen = new Set();
+                    const unique = [];
+                    let skippedDuplicates = 0;
+                    let skippedInvalid = 0;
+                    let processed = 0;
+                    let lastStatus = 0;
+                    const total = list.length;
+                    this._setProcessingStatus(`Processing images 0/${total}`);
+                    const updateStatus = (label) => {
+                        const now = Date.now();
+                        if (now - lastStatus < 120) return;
+                        lastStatus = now;
+                        this._setProcessingStatus(`${label} ${processed}/${total}`);
+                    };
+
+                    for (let i = 0; i < list.length; i++) {
+                        let file = list[i];
+                        if (!file) continue;
+                        let name = (file.name || "").trim();
+                        const type = file.type || "";
+                        const nameParts = splitName(name);
+                        const ext = nameParts.ext || getExtFromType(type);
+                        if (!name && !type.startsWith("image/")) {
+                            skippedInvalid += 1;
+                            processed += 1;
+                            updateStatus("Processing images");
+                            continue;
+                        }
+
+                        const hash = await this._hashImagePixels(file);
+                        if (!hash) {
+                            skippedInvalid += 1;
+                            processed += 1;
+                            updateStatus("Processing images");
+                            continue;
+                        }
+                        processed += 1;
+                        updateStatus("Processing images");
+
+                        if (seen.has(hash) || existingHashes.has(hash)) {
+                            skippedDuplicates += 1;
+                            continue;
+                        }
+                        seen.add(hash);
+
+                        if (!name) {
+                            name = `upload_${hash.slice(0, 12)}.${ext}`;
+                        } else if (!isImageName(name) && type.startsWith("image/")) {
+                            name = ensureExt(name, ext);
+                        }
+
+                        if (existingNames.has(name.toLowerCase())) {
+                            name = makeUniqueNameWithHash(name, ext, hash, existingNames);
+                        }
+
+                        existingNames.add(name.toLowerCase());
+                        unique.push({ file: new File([file], name, { type: type || `image/${ext}`, lastModified: file.lastModified || Date.now() }), hash });
+                    }
+
+                    if (unique.length === 0) {
+                        this._setProcessingStatus("");
+                        return { uploaded: 0, failed: 0, skippedDuplicates, skippedInvalid };
+                    }
+
+                    this.showPlaceholder(false);
+                    let uploaded = 0;
+                    let failed = 0;
+                    let uploadedCount = 0;
+                    this._setProcessingStatus(`Uploading 0/${unique.length}`);
+
+                    for (const item of unique) {
+                        const file = item.file;
                         try {
                             const formData = new FormData();
                             formData.append("image", file);
@@ -678,12 +994,328 @@ app.registerExtension({
                             if (resp.status === 200) {
                                 const data = await resp.json();
                                 this.addThumbnail(data);
+                                if (this._galleryHashCache && item.hash) {
+                                    this._galleryHashCache.set(data?.name || file?.name, item.hash);
+                                }
+                                if (item.hash) existingHashes.add(item.hash);
+                                try {
+                                    await api.fetchApi("/mad-nodes/vpg-hash-index", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                            filename: data?.name || file?.name || "",
+                                            subfolder: data?.subfolder || "visual_gallery",
+                                        }),
+                                    });
+                                } catch (e) {}
+                                uploaded += 1;
+                            } else {
+                                failed += 1;
                             }
                         } catch (err) {
+                            failed += 1;
                             logError("Upload failed:", err);
                         }
+                        uploadedCount += 1;
+                        this._setProcessingStatus(`Uploading ${uploadedCount}/${unique.length}`);
                     }
                     this.saveState();
+                    this._setProcessingStatus("");
+                    return { uploaded, failed, skippedDuplicates, skippedInvalid };
+                };
+
+                this.openUploadDialog = () => {
+                    const existing = document.getElementById("vpg-upload-overlay");
+                    if (existing) {
+                        existing.remove();
+                    }
+
+                    const overlay = document.createElement("div");
+                    overlay.id = "vpg-upload-overlay";
+                    overlay.className = "mad-gallery-upload-overlay";
+
+                    const modal = document.createElement("div");
+                    modal.className = "mad-gallery-upload-modal";
+
+                    const header = document.createElement("div");
+                    header.className = "mad-gallery-upload-header";
+                    header.innerText = "Upload Images";
+
+                    const closeBtn = document.createElement("button");
+                    closeBtn.className = "mad-gallery-upload-close";
+                    closeBtn.innerText = "Close";
+
+                    const status = document.createElement("div");
+                    status.className = "mad-gallery-upload-status";
+
+                    const setStatus = (text, kind = "info") => {
+                        status.textContent = text || "";
+                        status.dataset.kind = kind;
+                    };
+
+                    const body = document.createElement("div");
+                    body.className = "mad-gallery-upload-body";
+
+                    const sectionFiles = document.createElement("div");
+                    sectionFiles.className = "mad-gallery-upload-section";
+                    sectionFiles.innerHTML = "<div class=\"mad-gallery-upload-title\">Choose Files</div>";
+
+                    const fileBtn = document.createElement("button");
+                    fileBtn.className = "mad-gallery-upload-btn";
+                    fileBtn.innerText = "Choose Files";
+
+                    const fileInput = document.createElement("input");
+                    fileInput.type = "file";
+                    fileInput.accept = "image/*";
+                    fileInput.multiple = true;
+                    fileInput.style.display = "none";
+
+                    fileBtn.onclick = () => fileInput.click();
+
+                    fileInput.onchange = async () => {
+                        const files = Array.from(fileInput.files || []).filter((f) => f && (f.type?.startsWith("image/") || isImageName(f.name)));
+                        fileInput.value = "";
+                        if (files.length === 0) {
+                            setStatus("No valid images selected.", "warn");
+                            return;
+                        }
+                        const result = await this.uploadAndProcessFiles(files);
+                        const parts = [];
+                        if (result.uploaded) parts.push(`Uploaded ${result.uploaded}`);
+                        if (result.skippedDuplicates) parts.push(`Skipped ${result.skippedDuplicates} duplicates`);
+                        if (result.skippedInvalid) parts.push(`Ignored ${result.skippedInvalid} invalid`);
+                        if (result.failed) parts.push(`Failed ${result.failed}`);
+                        setStatus(parts.join(" • ") || "No new images uploaded.", "info");
+                    };
+
+                    sectionFiles.appendChild(fileBtn);
+                    sectionFiles.appendChild(fileInput);
+
+                    const sectionUrls = document.createElement("div");
+                    sectionUrls.className = "mad-gallery-upload-section";
+                    sectionUrls.innerHTML = "<div class=\"mad-gallery-upload-title\">Upload via URLs</div>";
+
+                    const urlInput = document.createElement("textarea");
+                    urlInput.className = "mad-gallery-upload-textarea";
+                    urlInput.placeholder = "One image URL per line";
+
+                    const urlBtn = document.createElement("button");
+                    urlBtn.className = "mad-gallery-upload-btn";
+                    urlBtn.innerText = "Upload URLs";
+
+                    const filenameFromUrl = (raw) => {
+                        try {
+                            const u = new URL(raw);
+                            const part = decodeURIComponent(u.pathname.split("/").pop() || "");
+                            return part || "";
+                        } catch (e) {
+                            return "";
+                        }
+                    };
+
+                    const uploadFromUrls = async (urls) => {
+                        const existingNames = this._getExistingNameSet();
+                        const files = [];
+                        let skippedDuplicates = 0;
+                        let skippedInvalid = 0;
+                        let failed = 0;
+                        let downloaded = 0;
+                        const total = urls.length;
+                        const updateDownloadStatus = () => {
+                            const text = `Downloading ${downloaded}/${total}`;
+                            setStatus(text, "info");
+                            this._setProcessingStatus(text);
+                        };
+                        updateDownloadStatus();
+
+                        for (let i = 0; i < urls.length; i++) {
+                            const raw = urls[i];
+                            if (!raw) continue;
+                            let fileName = filenameFromUrl(raw);
+                            if (fileName) fileName = fileName.split("?")[0].split("#")[0];
+
+                            if (fileName && existingNames.has(fileName.toLowerCase())) {
+                                skippedDuplicates += 1;
+                                continue;
+                            }
+
+                            let resp;
+                            try {
+                                resp = await fetch(raw, { mode: "cors" });
+                            } catch (err) {
+                                failed += 1;
+                                downloaded += 1;
+                                updateDownloadStatus();
+                                continue;
+                            }
+
+                            if (!resp || !resp.ok) {
+                                failed += 1;
+                                downloaded += 1;
+                                updateDownloadStatus();
+                                continue;
+                            }
+
+                            let blob;
+                            try {
+                                blob = await resp.blob();
+                            } catch (err) {
+                                failed += 1;
+                                downloaded += 1;
+                                updateDownloadStatus();
+                                continue;
+                            }
+
+                            const isImage = await this._isImageBlob(blob);
+                            if (!isImage) {
+                                skippedInvalid += 1;
+                                downloaded += 1;
+                                updateDownloadStatus();
+                                continue;
+                            }
+
+                            const ext = getExtFromType(blob.type);
+                            fileName = ensureExt(fileName || `url_${Date.now()}_${i}`, ext);
+                            if (existingNames.has(fileName.toLowerCase())) {
+                                skippedDuplicates += 1;
+                                continue;
+                            }
+
+                            existingNames.add(fileName.toLowerCase());
+                            files.push(new File([blob], fileName, { type: blob.type || `image/${ext}`, lastModified: Date.now() }));
+                            downloaded += 1;
+                            updateDownloadStatus();
+                        }
+
+                        if (files.length === 0) {
+                            this._setProcessingStatus("");
+                        }
+                        const result = await this.uploadAndProcessFiles(files);
+                        result.skippedDuplicates += skippedDuplicates;
+                        result.skippedInvalid += skippedInvalid;
+                        result.failed += failed;
+                        return result;
+                    };
+
+                    urlBtn.onclick = async () => {
+                        const lines = (urlInput.value || "")
+                            .split(/\r?\n/)
+                            .map((l) => l.trim())
+                            .filter(Boolean);
+                        if (lines.length === 0) {
+                            setStatus("Paste one or more image URLs first.", "warn");
+                            return;
+                        }
+                        setStatus("Checking URLs...", "info");
+                        const result = await uploadFromUrls(lines);
+                        const parts = [];
+                        if (result.uploaded) parts.push(`Uploaded ${result.uploaded}`);
+                        if (result.skippedDuplicates) parts.push(`Skipped ${result.skippedDuplicates} duplicates`);
+                        if (result.skippedInvalid) parts.push(`Ignored ${result.skippedInvalid} invalid`);
+                        if (result.failed) parts.push(`Failed ${result.failed}`);
+                        setStatus(parts.join(" • ") || "No new images uploaded.", "info");
+                    };
+
+                    sectionUrls.appendChild(urlInput);
+                    sectionUrls.appendChild(urlBtn);
+
+                    const sectionPaste = document.createElement("div");
+                    sectionPaste.className = "mad-gallery-upload-section";
+                    sectionPaste.innerHTML = "<div class=\"mad-gallery-upload-title\">Paste from Clipboard</div>";
+
+                    const pasteBox = document.createElement("div");
+                    pasteBox.className = "mad-gallery-upload-paste";
+                    pasteBox.tabIndex = 0;
+                    pasteBox.contentEditable = "true";
+                    pasteBox.spellcheck = false;
+                    pasteBox.dataset.placeholder = "Click here, then press Ctrl+V to paste images.";
+                    pasteBox.setAttribute("role", "textbox");
+                    pasteBox.setAttribute("aria-label", "Paste images from clipboard");
+
+                    pasteBox.onclick = () => pasteBox.focus();
+                    pasteBox.onfocus = () => pasteBox.classList.add("focused");
+                    pasteBox.onblur = () => pasteBox.classList.remove("focused");
+
+                    const handlePasteFiles = async (files) => {
+                        if (!files || files.length === 0) {
+                            setStatus("No images found in clipboard.", "warn");
+                            return;
+                        }
+                        const existingNames = this._getExistingNameSet();
+                        const normalized = files.map((file, idx) => {
+                            if (!file || !file.type) return file;
+                            if (file.name && file.name.trim()) return file;
+                            const ext = getExtFromType(file.type);
+                            const name = makeUniqueName(`clipboard_${Date.now()}_${idx}`, ext, existingNames);
+                            return new File([file], name, { type: file.type || `image/${ext}`, lastModified: file.lastModified || Date.now() });
+                        });
+                        const result = await this.uploadAndProcessFiles(normalized);
+                        const parts = [];
+                        if (result.uploaded) parts.push(`Uploaded ${result.uploaded}`);
+                        if (result.skippedDuplicates) parts.push(`Skipped ${result.skippedDuplicates} duplicates`);
+                        if (result.skippedInvalid) parts.push(`Ignored ${result.skippedInvalid} invalid`);
+                        if (result.failed) parts.push(`Failed ${result.failed}`);
+                        setStatus(parts.join(" • ") || "No new images uploaded.", "info");
+                    };
+
+                    const onPaste = async (e) => {
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        const items = e.clipboardData?.items || [];
+                        const files = [];
+                        for (const item of items) {
+                            if (item.kind === "file") {
+                                const f = item.getAsFile();
+                                if (f && (f.type?.startsWith("image/") || isImageName(f.name))) files.push(f);
+                            }
+                        }
+
+                        if (files.length > 0) {
+                            e.preventDefault();
+                            await handlePasteFiles(files);
+                            return;
+                        }
+                        if (!modal.contains(e.target)) e.preventDefault();
+                    };
+
+                    const onKeyDown = (e) => {
+                        if (e.key === "Escape") {
+                            e.preventDefault();
+                            close();
+                        }
+                    };
+
+                    const close = () => {
+                        document.removeEventListener("keydown", onKeyDown);
+                        document.removeEventListener("paste", onPaste, true);
+                        overlay.remove();
+                    };
+
+                    closeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        close();
+                    };
+
+                    overlay.onclick = (e) => {
+                        if (e.target === overlay) close();
+                    };
+
+                    document.addEventListener("keydown", onKeyDown);
+                    document.addEventListener("paste", onPaste, true);
+
+                    sectionPaste.appendChild(pasteBox);
+
+                    body.appendChild(sectionFiles);
+                    body.appendChild(sectionUrls);
+                    body.appendChild(sectionPaste);
+
+                    modal.appendChild(header);
+                    modal.appendChild(body);
+                    modal.appendChild(status);
+                    modal.appendChild(closeBtn);
+                    overlay.appendChild(modal);
+                    document.body.appendChild(overlay);
+                    requestAnimationFrame(() => pasteBox.focus());
                 };
 
                 this._setupCanvasDnD = () => {

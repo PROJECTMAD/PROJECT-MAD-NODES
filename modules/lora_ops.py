@@ -7,7 +7,12 @@ import folder_paths
 import comfy.lora
 import comfy.model_management
 import comfy.float
-from comfy.model_patcher import get_key_weight, string_to_seed
+from comfy.model_patcher import get_key_weight
+
+try:
+    from comfy.utils import string_to_seed
+except ImportError:
+    from comfy.model_patcher import string_to_seed
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -24,7 +29,7 @@ LOG_PREFIX = "[MAD-NODES-OPS]"
 
 
 UI_CONFIG = {
-    "config_version": "1.2.3",
+    "config_version": "1.2.4",
     "BLOCK_ORDER": [
         "clip",
         "input",
@@ -408,6 +413,58 @@ class LoraOps:
                     best_score = score
                     best = rel
         return folder_paths.get_full_path("loras", best) if best else None
+
+    @staticmethod
+    def resolve_model_path(model_name: str) -> Optional[str]:
+        if not model_name:
+            return None
+
+        try:
+            raw_path = Path(model_name).expanduser()
+        except Exception:
+            raw_path = None
+
+        if raw_path and raw_path.exists():
+            return str(raw_path.resolve())
+
+        for category in ["checkpoints", "diffusion_models"]:
+            direct = folder_paths.get_full_path(category, model_name)
+            if direct:
+                return direct
+
+        target_stem = Path(model_name).stem.lower()
+        target_base = Path(model_name).name.lower()
+        target_has_ext = Path(model_name).suffix != ""
+        provided_norm = str(Path(model_name)).replace("\\", "/").lower()
+
+        def search_in(category: str) -> Optional[str]:
+            try:
+                available = folder_paths.get_filename_list(category)
+            except Exception:
+                return None
+            best, best_score = None, -1
+            for rel in available:
+                p = Path(rel)
+                rel_norm = str(p).replace("\\", "/").lower()
+                if rel_norm == provided_norm:
+                    return folder_paths.get_full_path(category, rel)
+                score = -1
+                if p.name.lower() == target_base:
+                    score = 100
+                elif not target_has_ext and p.stem.lower() == target_stem:
+                    score = 50
+                if score > -1:
+                    if "/" in provided_norm and provided_norm in rel_norm:
+                        score += 25
+                    if score > best_score:
+                        best_score = score
+                        best = rel
+            return folder_paths.get_full_path(category, best) if best else None
+
+        resolved = search_in("checkpoints")
+        if resolved:
+            return resolved
+        return search_in("diffusion_models")
 
     @staticmethod
     def compute_stats(

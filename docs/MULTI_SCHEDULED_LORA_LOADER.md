@@ -69,6 +69,8 @@ This node outputs **HOOKS**. To apply them to your text encoder:
 | `apply_to_conds` | True | Needed for scheduled model hook application in condition pipelines. |
 | `schedule_clip` | True | Allows CLIP strength to follow the schedule (keyframes). |
 
+*Note: Some models may produce completely botched generations. In such cases disable `schedule_clip` (set to False).*
+
 ## Curve Editor
 
 Click **Open Multi-LoRA Editor** to edit LoRAs, strengths, and curves.

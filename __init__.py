@@ -27,7 +27,99 @@ executor = ThreadPoolExecutor(max_workers=2)
 
 PACKAGE_NAME = "PROJECT-MAD-NODES"
 WEB_DIRECTORY = "./js"
-VERSION = "1.2.3"
+VERSION = "1.2.4"
+
+
+@server.PromptServer.instance.routes.post("/mad-nodes/vpg-hash-index")
+async def vpg_hash_index(request):
+    """
+    Updates the Visual Prompt Gallery hash index for a given file.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    filename = data.get("filename", "")
+    subfolder = data.get("subfolder", "visual_gallery")
+
+    if not filename:
+        return web.json_response(
+            {"status": "error", "message": "Missing filename"}, status=400
+        )
+
+    if subfolder != "visual_gallery":
+        return web.json_response(
+            {"status": "error", "message": "Invalid subfolder"}, status=400
+        )
+
+    if Path(filename).name != filename:
+        return web.json_response(
+            {"status": "error", "message": "Invalid filename"}, status=400
+        )
+
+    input_dir = folder_paths.get_input_directory()
+    gallery_dir = str(Path(input_dir) / "visual_gallery")
+
+    loop = asyncio.get_event_loop()
+    vpg = VisualPromptGallery()
+    img_hash, added = await loop.run_in_executor(
+        executor,
+        vpg.update_hash_index_for_file,
+        gallery_dir,
+        filename,
+    )
+
+    if not img_hash:
+        return web.json_response({"status": "skipped"})
+
+    return web.json_response({"status": "ok", "hash": img_hash, "added": added})
+
+
+@server.PromptServer.instance.routes.post("/mad-nodes/vpg-hash-lookup")
+async def vpg_hash_lookup(request):
+    """
+    Returns hashes for provided gallery filenames.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    filenames = data.get("filenames", [])
+    subfolder = data.get("subfolder", "visual_gallery")
+
+    if subfolder != "visual_gallery":
+        return web.json_response(
+            {"status": "error", "message": "Invalid subfolder"}, status=400
+        )
+
+    if not isinstance(filenames, list):
+        return web.json_response(
+            {"status": "error", "message": "Invalid filenames"}, status=400
+        )
+
+    safe_names = []
+    for name in filenames[:500]:
+        if not isinstance(name, str) or not name:
+            continue
+        if Path(name).name != name:
+            continue
+        safe_names.append(name)
+
+    input_dir = folder_paths.get_input_directory()
+    gallery_dir = str(Path(input_dir) / "visual_gallery")
+
+    loop = asyncio.get_event_loop()
+    vpg = VisualPromptGallery()
+    hashes = await loop.run_in_executor(
+        executor,
+        vpg.get_hashes_for_files,
+        gallery_dir,
+        safe_names,
+    )
+
+    return web.json_response({"status": "ok", "hashes": hashes})
 
 
 @server.PromptServer.instance.routes.get("/mad-nodes/lora-preview")
@@ -148,7 +240,7 @@ async def check_compatibility(request):
         "message": "",
     }
 
-    ckpt_path_str = folder_paths.get_full_path("checkpoints", ckpt_name)
+    ckpt_path_str = LoraOps.resolve_model_path(ckpt_name)
     lora_path_str = LoraOps.resolve_path(lora_name)
 
     if not ckpt_path_str:

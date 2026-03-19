@@ -2,7 +2,7 @@
 
 # PROJECT-MAD-NODES
 
-[![Version](https://img.shields.io/badge/version-1.2.3-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
+[![Version](https://img.shields.io/badge/version-1.2.4-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
 [![Changelog](https://img.shields.io/badge/Changelog-View-orange?logo=readme&logoColor=white)](./CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)]()
@@ -18,27 +18,6 @@
 > **Compatibility Note: ComfyUI Nodes 2.0**
 >
 > **Visual Prompt Gallery** is currently **incompatible** with the new experimental "Nodes 2.0" (Vue-based) rendering system. If you have enabled new frontend in ComfyUI settings, gallery interface will not appear. **Multi Scheduled LoRA Loader** remains fully functional in both versions.
-
- ## Introduction
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 🟣 Dynamic LoRA Control
-
-Traditional LoRA loaders apply **static strength** throughout generation. Multi Scheduled LoRA Loader lets you **draw curves** that control strength over time - fade-ins, fade-outs, complex patterns, or per block weighting.
-
-</td>
-<td width="50%" valign="top">
-
-### 🔵 Visual Inspiration
-
-Visual Prompt Gallery is an **integrated image browser** that extracts prompts from your reference images. Switch creations and styles instantly without leaving your workflow.
-
-</td>
-</tr>
-</table>
 
 ---
 
@@ -105,31 +84,6 @@ git clone https://github.com/PROJECTMAD/PROJECT-MAD-NODES.git
 
 ---
 
-## Quick Feature Overview
-
-### Multi Scheduled LoRA Loader
-
-| Feature | Description |
-|---------|-------------|
-| **Visual Curve Editor** | Draw schedules with an intuitive graphical interface |
-| **Multi-LoRA Timeline** | Manage multiple LoRAs in a unified view |
-| **Block Weight Control** | Fine-tune individual UNet blocks |
-| **Architecture Detection** | Automatic SDXL, FLUX, SD1.5, SD3 identification |
-| **Profile System** | Save and switch between configurations |
-| **Undo/Redo** | Full history stack with keyboard shortcuts |
-
-### Visual Prompt Gallery
-
-| Feature | Description |
-|---------|-------------|
-| **Drag & Drop Import** | Drop images directly onto the node |
-| **Multi-Format Extraction** | EXIF, PNG chunks, CivitAI, A1111 metadata |
-| **Gallery View** | Resizable floating window with aspect modes |
-| **Offline Capable** | Works without internet after first load |
-| **Context Menu** | Right-click for fullscreen and management |
-
----
-
 ## Documentation Index
 
 <table>
@@ -146,7 +100,7 @@ git clone https://github.com/PROJECTMAD/PROJECT-MAD-NODES.git
   - [Curve Editor](./docs/MULTI_SCHEDULED_LORA_LOADER.md#curve-editor)
   - [Block Weights](./docs/MULTI_SCHEDULED_LORA_LOADER.md#block-weight-system)
   - [Profiles](./docs/MULTI_SCHEDULED_LORA_LOADER.md#profile-management)
-  - [String Syntax](./docs/MULTI_SCHEDULED_LORA_LOADER.md#external-string-syntax)
+  - [String Syntax](./docs/MULTI_SCHEDULED_LORA_LOADER.md#external-schedule-strings)
   - [Outputs](./docs/MULTI_SCHEDULED_LORA_LOADER.md#outputs)
 - [Visual Prompt Gallery](./docs/VISUAL_PROMPT_GALLERY.md)
   - [Getting Started](./docs/VISUAL_PROMPT_GALLERY.md#getting-started)
@@ -162,7 +116,7 @@ git clone https://github.com/PROJECTMAD/PROJECT-MAD-NODES.git
   - [Operation Modes](./docs/TECHNICAL.md#operation-modes)
   - [External String Parsing](./docs/TECHNICAL.md#external-schedule-string-parsing)
   - [Block-weight vectors & presets](./docs/TECHNICAL.md#block-weight-vectors-and-presets)
-  - [LoRA Manager (recommended)](./docs/TECHNICAL.md#recommended-dependency-lora-manager)
+  - [LoRA Manager (recommended)](./docs/TECHNICAL.md#sidecar-file-integration)
   - [Architecture Detection](./docs/TECHNICAL.md#architecture-detection)
   - [API Endpoints](./docs/TECHNICAL.md#api-endpoints)
   - [Block Mappings](./docs/TECHNICAL.md#block-mappings)
