@@ -118,7 +118,7 @@ Click an image in the gallery → Run your workflow → Prompts are automaticall
 Click **UPLOAD** in the toolbar to open the upload dialog. You can:
 
 - **Choose Files** (multi-select)
-- **Upload via URLs** (one per line)
+- **Upload via URLs or File Paths** (one per line)
 - **Paste from Clipboard** (Ctrl+V)
 
 The dialog shows per‑stage progress (Downloading → Processing → Uploading).
@@ -250,20 +250,6 @@ The upload window mirrors the same status so you can close it and still track pr
 | `IMAGE` | IMAGE | Selected image as tensor (64x64 fallback if none selected) |
 | `positive_prompt` | STRING | Extracted positive prompt text |
 | `negative_prompt` | STRING | Extracted negative prompt text |
-
----
-
-## Offline Operation
-
-The gallery loads the **ExifReader** JavaScript library from a CDN at runtime for metadata parsing. If you’re offline or block CDN access, images will still render but metadata extraction may be unavailable.
-
-| State | Behavior |
-|-------|----------|
-| **First Load** | Library downloaded from CDN |
-| **Subsequent Loads** | Library served from browser cache |
-| **Offline** | Works if library was previously cached |
-
-> **Privacy:** No image data is sent externally. All processing happens locally.
 
 ---
 

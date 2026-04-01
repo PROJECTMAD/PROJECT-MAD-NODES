@@ -1,4 +1,7 @@
 from pathlib import Path
+import os
+import mimetypes
+import urllib.parse
 from aiohttp import web
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -27,7 +30,7 @@ executor = ThreadPoolExecutor(max_workers=2)
 
 PACKAGE_NAME = "PROJECT-MAD-NODES"
 WEB_DIRECTORY = "./js"
-VERSION = "1.2.4"
+VERSION = "1.2.5"
 
 
 @server.PromptServer.instance.routes.post("/mad-nodes/vpg-hash-index")
@@ -42,6 +45,7 @@ async def vpg_hash_index(request):
 
     filename = data.get("filename", "")
     subfolder = data.get("subfolder", "visual_gallery")
+    pixel_hash = data.get("pixel_hash", "")
 
     if not filename:
         return web.json_response(
@@ -68,6 +72,7 @@ async def vpg_hash_index(request):
         vpg.update_hash_index_for_file,
         gallery_dir,
         filename,
+        pixel_hash or None,
     )
 
     if not img_hash:
@@ -122,6 +127,46 @@ async def vpg_hash_lookup(request):
     return web.json_response({"status": "ok", "hashes": hashes})
 
 
+@server.PromptServer.instance.routes.post("/mad-nodes/vpg-hash-lookup-file-hash")
+async def vpg_hash_lookup_file_hash(request):
+    """
+    Returns hashes for provided file hashes (dedupe shortcut).
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    hashes = data.get("hashes", [])
+    if not isinstance(hashes, list):
+        return web.json_response(
+            {"status": "error", "message": "Invalid hashes"}, status=400
+        )
+
+    safe_hashes = []
+    for value in hashes[:500]:
+        if not isinstance(value, str) or not value:
+            continue
+        safe_hashes.append(value)
+
+    if not safe_hashes:
+        return web.json_response({"status": "ok", "hashes": {}})
+
+    input_dir = folder_paths.get_input_directory()
+    gallery_dir = str(Path(input_dir) / "visual_gallery")
+
+    loop = asyncio.get_event_loop()
+    vpg = VisualPromptGallery()
+    found = await loop.run_in_executor(
+        executor,
+        vpg.get_hashes_for_file_hashes,
+        gallery_dir,
+        safe_hashes,
+    )
+
+    return web.json_response({"status": "ok", "hashes": found})
+
+
 @server.PromptServer.instance.routes.get("/mad-nodes/lora-preview")
 async def get_lora_preview(request):
     """
@@ -155,6 +200,70 @@ async def get_lora_preview(request):
             return web.FileResponse(candidate)
 
     return web.Response(status=404)
+
+
+def _vpg_resolve_local_path(raw_path: str):
+    if not isinstance(raw_path, str):
+        return None
+    value = raw_path.strip()
+    if not value:
+        return None
+    if value.lower().startswith("file://"):
+        try:
+            parsed = urllib.parse.urlparse(value)
+            value = urllib.parse.unquote(parsed.path or "")
+        except Exception:
+            value = value[7:]
+        if (
+            value.startswith("/")
+            and len(value) >= 3
+            and value[1].isalpha()
+            and value[2] == ":"
+        ):
+            value = value[1:]
+    value = os.path.expandvars(value)
+    value = os.path.expanduser(value)
+    path = Path(value)
+    if not path.is_absolute():
+        try:
+            path = (Path.cwd() / path).resolve()
+        except Exception:
+            pass
+    return path
+
+
+@server.PromptServer.instance.routes.post("/mad-nodes/vpg-load-file")
+async def vpg_load_file(request):
+    """
+    Streams a local image file for the upload dialog (URLs / file paths).
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    raw_path = data.get("path", "")
+    path = _vpg_resolve_local_path(raw_path)
+    if not path:
+        return web.json_response(
+            {"status": "error", "message": "Missing path"}, status=400
+        )
+
+    if not path.is_file():
+        return web.json_response(
+            {"status": "error", "message": "File not found"}, status=404
+        )
+
+    if not VisualPromptGallery._is_image_file(path.name):
+        return web.json_response(
+            {"status": "error", "message": "Not an image file"}, status=400
+        )
+
+    mime, _ = mimetypes.guess_type(path.name)
+    headers = {"X-File-Name": path.name, "Cache-Control": "no-store"}
+    if mime:
+        headers["Content-Type"] = mime
+    return web.FileResponse(path, headers=headers)
 
 
 @server.PromptServer.instance.routes.get("/mad-nodes/config")
