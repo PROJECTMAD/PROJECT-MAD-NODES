@@ -321,7 +321,6 @@
 *   **Verify image has metadata** - check with external tool like ExifTool.
 *   **PNG recommended** - best metadata preservation.
 *   **Check browser console** for ExifReader loading errors.
-*   **Ensure internet access** on first load (library needs to download once).
 *   **Supported formats:** ComfyUI PNG, A1111/Forge, CivitAI, EXIF UserComment.
 
 ### Gallery Not Persisting

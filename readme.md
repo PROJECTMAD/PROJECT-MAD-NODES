@@ -2,7 +2,7 @@
 
 # PROJECT-MAD-NODES
 
-[![Version](https://img.shields.io/badge/version-1.2.4-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
+[![Version](https://img.shields.io/badge/version-1.2.5-red.svg)](https://registry.comfy.org/publishers/projectmad/nodes/project-mad-nodes)
 [![Changelog](https://img.shields.io/badge/Changelog-View-orange?logo=readme&logoColor=white)](./CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)]()
@@ -44,7 +44,6 @@ git clone https://github.com/PROJECTMAD/PROJECT-MAD-NODES.git
 |-------------|--------|---------|
 | [**ComfyUI**](https://github.com/Comfy-Org/ComfyUI) | Both | Latest version recommended |
 | **Python** | Both | 3.10 or higher |
-| **Internet** | Visual Prompt Gallery | Required once for ExifReader library (Visual Prompt Gallery only) |
 | [**LoRA Manager**](https://github.com/willmiao/ComfyUI-Lora-Manager) | Multi Scheduled LoRA Loader | **Highly recommended** for better LoRA architecture and trigger words detection, but also showing image previews. LoRA Manager → **Fetch** (to build metadata) |
 
 ---

@@ -4,18 +4,17 @@ from PIL import Image, ImageOps, ImageFile
 import folder_paths
 import json
 import os
+import sqlite3
 import logging
 import io
 from pathlib import Path
 import hashlib
-import threading
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 NODE_DIR_NAME = Path(__file__).parent.name
 logger = logging.getLogger(NODE_DIR_NAME)
-_HASH_INDEX_LOCK = threading.Lock()
 
 
 class VisualPromptGallery:
@@ -37,37 +36,24 @@ class VisualPromptGallery:
                 h.update(chunk)
         return h.hexdigest()
 
-    def _load_hash_index(self, gallery_dir: str) -> tuple:
-        index_path = os.path.join(gallery_dir, ".vpg_hash_index.json")
-        index = {"hashes": {}, "files": {}, "hash_type": "sha256-file"}
-        if os.path.exists(index_path):
-            try:
-                with open(index_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    index = data
-            except Exception:
-                index = {"hashes": {}, "files": {}, "hash_type": "sha256-file"}
-        if not isinstance(index, dict):
-            index = {"hashes": {}, "files": {}, "hash_type": "sha256-file"}
-        if index.get("hash_type") != "sha256-file":
-            index = {"hashes": {}, "files": {}, "hash_type": "sha256-file"}
-        if not isinstance(index.get("hashes"), dict):
-            index["hashes"] = {}
-        if not isinstance(index.get("files"), dict):
-            index["files"] = {}
-        if not isinstance(index.get("hash_type"), str):
-            index["hash_type"] = "sha256-file"
-        return index_path, index
-
-    def _save_hash_index(self, index_path: str, index: dict) -> None:
+    @staticmethod
+    def _hash_image_pixels(path: str) -> str:
         try:
-            tmp_path = index_path + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(index, f, ensure_ascii=True, separators=(",", ":"))
-            os.replace(tmp_path, index_path)
+            with Image.open(path) as img:
+                img = ImageOps.exif_transpose(img)
+                if img.mode != "RGBA":
+                    img = img.convert("RGBA")
+                arr = np.array(img, dtype=np.uint8)
+                if arr.ndim != 3 or arr.shape[2] != 4:
+                    return None
+                rgb = arr[:, :, :3].astype(np.float32)
+                alpha = (arr[:, :, 3:4].astype(np.float32)) / 255.0
+                rgb = np.floor(rgb * alpha + 0.5).astype(np.uint8)
+                h = hashlib.sha256()
+                h.update(rgb.tobytes())
+                return h.hexdigest()
         except Exception:
-            pass
+            return None
 
     @staticmethod
     def _stat_signature(path: str):
@@ -75,20 +61,49 @@ class VisualPromptGallery:
         return st.st_size, st.st_mtime_ns
 
     @staticmethod
-    def _get_cached_hash(index: dict, filename: str, stat_sig):
-        files = index.get("files", {})
-        if not isinstance(files, dict):
-            return None
-        entry = files.get(filename.lower())
-        if not isinstance(entry, dict):
-            return None
-        if entry.get("size") == stat_sig[0] and entry.get("mtime_ns") == stat_sig[1]:
-            cached = entry.get("hash")
-            if isinstance(cached, str) and cached:
-                return cached
-        return None
+    def _chunked(values, size: int):
+        for i in range(0, len(values), size):
+            yield values[i : i + size]
 
-    def update_hash_index_for_file(self, gallery_dir: str, filename: str) -> tuple:
+    def _open_hash_db(self, gallery_dir: str):
+        db_path = os.path.join(gallery_dir, ".vpg_hash_index.sqlite")
+        conn = sqlite3.connect(db_path, timeout=2.5)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=2500")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS file_hashes (
+                name_lower TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                pixel_hash TEXT,
+                size INTEGER NOT NULL,
+                mtime_ns INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_file_hashes_hash ON file_hashes(hash)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_file_hashes_pixel_hash ON file_hashes(pixel_hash)")
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(file_hashes)")}
+        if "pixel_hash" not in cols:
+            conn.execute("ALTER TABLE file_hashes ADD COLUMN pixel_hash TEXT")
+        return conn
+
+    def _fetch_cached_rows(self, conn, name_lowers):
+        if not name_lowers:
+            return {}
+        cached = {}
+        for chunk in self._chunked(name_lowers, 200):
+            placeholders = ",".join("?" for _ in chunk)
+            query = f"SELECT name_lower, hash, pixel_hash, size, mtime_ns FROM file_hashes WHERE name_lower IN ({placeholders})"
+            for row in conn.execute(query, chunk):
+                cached[row["name_lower"]] = row
+        return cached
+
+    def update_hash_index_for_file(self, gallery_dir: str, filename: str, pixel_hash: str = None) -> tuple:
         if not filename or not self._is_image_file(filename):
             return None, False
         file_path = os.path.join(gallery_dir, filename)
@@ -98,174 +113,74 @@ class VisualPromptGallery:
             stat_sig = self._stat_signature(file_path)
         except Exception:
             return None, False
+        lower = filename.lower()
+        cached_row = None
+        try:
+            with self._open_hash_db(gallery_dir) as conn:
+                cached_row = conn.execute(
+                    "SELECT hash, pixel_hash, size, mtime_ns FROM file_hashes WHERE name_lower = ?",
+                    (lower,),
+                ).fetchone()
+        except Exception:
+            cached_row = None
 
-        with _HASH_INDEX_LOCK:
-            index_path, index = self._load_hash_index(gallery_dir)
-            cached = self._get_cached_hash(index, filename, stat_sig)
-            if cached:
-                bucket = index.setdefault("hashes", {}).setdefault(cached, [])
-                if filename not in bucket:
-                    bucket.append(filename)
-                    index.setdefault("files", {})[filename.lower()] = {
-                        "hash": cached,
-                        "size": stat_sig[0],
-                        "mtime_ns": stat_sig[1],
-                        "name": filename,
-                    }
-                    self._save_hash_index(index_path, index)
-                    return cached, True
-                return cached, False
+        if (
+            cached_row
+            and cached_row["size"] == stat_sig[0]
+            and cached_row["mtime_ns"] == stat_sig[1]
+            and cached_row["hash"]
+        ):
+            if pixel_hash and cached_row["pixel_hash"] != pixel_hash:
+                try:
+                    with self._open_hash_db(gallery_dir) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        conn.execute(
+                            "UPDATE file_hashes SET pixel_hash = ? WHERE name_lower = ?",
+                            (pixel_hash, lower),
+                        )
+                        conn.commit()
+                except Exception:
+                    pass
+                return cached_row["hash"], True
+            return cached_row["hash"], False
 
         try:
             img_hash = self._hash_file_streamed(file_path)
         except Exception:
             return None, False
-
-        with _HASH_INDEX_LOCK:
-            index_path, index = self._load_hash_index(gallery_dir)
-            cached = self._get_cached_hash(index, filename, stat_sig)
-            if cached:
-                return cached, False
-
-            bucket = index.setdefault("hashes", {}).setdefault(img_hash, [])
-            added = False
-            dirty = False
-            if filename not in bucket:
-                bucket.append(filename)
-                added = True
-                dirty = True
-            files = index.setdefault("files", {})
-            entry = files.get(filename.lower())
-            new_entry = {
-                "hash": img_hash,
-                "size": stat_sig[0],
-                "mtime_ns": stat_sig[1],
-                "name": filename,
-            }
-            if entry != new_entry:
-                files[filename.lower()] = new_entry
-                dirty = True
-            if dirty:
-                self._save_hash_index(index_path, index)
+        if not pixel_hash:
+            pixel_hash = self._hash_image_pixels(file_path)
+        added = cached_row is None or cached_row["hash"] != img_hash
+        try:
+            with self._open_hash_db(gallery_dir) as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute(
+                    """
+                    INSERT INTO file_hashes (name_lower, name, hash, pixel_hash, size, mtime_ns)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(name_lower) DO UPDATE SET
+                        name = excluded.name,
+                        hash = excluded.hash,
+                        pixel_hash = excluded.pixel_hash,
+                        size = excluded.size,
+                        mtime_ns = excluded.mtime_ns
+                    """,
+                    (lower, filename, img_hash, pixel_hash, stat_sig[0], stat_sig[1]),
+                )
+                conn.commit()
+        except Exception:
+            return img_hash, False
         return img_hash, added
 
     def get_hashes_for_files(self, gallery_dir: str, filenames) -> dict:
         if not filenames:
             return {}
         results = {}
-        to_hash = []
-        to_hash_stats = {}
-
-        with _HASH_INDEX_LOCK:
-            index_path, index = self._load_hash_index(gallery_dir)
-            name_map = self._build_name_hash_map(index)
-            files = index.get("files", {}) if isinstance(index.get("files"), dict) else {}
-
-            for name in filenames:
-                if not isinstance(name, str) or not name:
-                    continue
-                lower = name.lower()
-                if not self._is_image_file(lower):
-                    continue
-                if lower in files:
-                    file_path = os.path.join(gallery_dir, name)
-                    if not os.path.isfile(file_path):
-                        continue
-                    try:
-                        stat_sig = self._stat_signature(file_path)
-                    except Exception:
-                        continue
-
-                    cached = self._get_cached_hash(index, name, stat_sig)
-                    if cached:
-                        results[name] = cached
-                        continue
-
-                    to_hash.append((name, file_path))
-                    to_hash_stats[lower] = stat_sig
-                    continue
-
-                if lower in name_map:
-                    results[name] = name_map[lower]
-                    continue
-
-                file_path = os.path.join(gallery_dir, name)
-                if not os.path.isfile(file_path):
-                    continue
-                try:
-                    stat_sig = self._stat_signature(file_path)
-                except Exception:
-                    continue
-                to_hash.append((name, file_path))
-                to_hash_stats[lower] = stat_sig
-
-        computed = []
-        for name, file_path in to_hash:
-            try:
-                img_hash = self._hash_file_streamed(file_path)
-                results[name] = img_hash
-                computed.append((name, img_hash))
-            except Exception:
-                continue
-
-        if computed:
-            with _HASH_INDEX_LOCK:
-                index_path, index = self._load_hash_index(gallery_dir)
-                dirty = False
-                for name, img_hash in computed:
-                    lower = name.lower()
-                    stat_sig = to_hash_stats.get(lower)
-                    if not stat_sig:
-                        continue
-                    bucket = index.setdefault("hashes", {}).setdefault(img_hash, [])
-                    if name not in bucket:
-                        bucket.append(name)
-                        dirty = True
-                    files = index.setdefault("files", {})
-                    new_entry = {
-                        "hash": img_hash,
-                        "size": stat_sig[0],
-                        "mtime_ns": stat_sig[1],
-                        "name": name,
-                    }
-                    if files.get(lower) != new_entry:
-                        files[lower] = new_entry
-                        dirty = True
-                if dirty:
-                    self._save_hash_index(index_path, index)
-        return results
-
-    def _build_name_hash_map(self, index: dict) -> dict:
-        name_map = {}
-        files = index.get("files", {})
-        if isinstance(files, dict):
-            for lower, entry in files.items():
-                if isinstance(lower, str) and isinstance(entry, dict):
-                    img_hash = entry.get("hash")
-                    if isinstance(img_hash, str) and img_hash:
-                        name_map[lower] = img_hash
-        hashes = index.get("hashes", {})
-        if isinstance(hashes, dict):
-            for img_hash, names in hashes.items():
-                if not isinstance(names, list):
-                    continue
-                for name in names:
-                    if isinstance(name, str) and name:
-                        name_map.setdefault(name.lower(), img_hash)
-        return name_map
-
-    def _sync_hash_index_for_gallery(self, gallery_dir: str, index_path: str, index: dict, gallery_names) -> tuple:
-        name_map = self._build_name_hash_map(index)
-        dirty = False
-        if not gallery_names:
-            return index, name_map
-
-        for name in gallery_names:
-            if not name:
+        candidates = []
+        for name in filenames:
+            if not isinstance(name, str) or not name:
                 continue
             lower = name.lower()
-            if lower in name_map:
-                continue
             if not self._is_image_file(lower):
                 continue
             file_path = os.path.join(gallery_dir, name)
@@ -273,25 +188,124 @@ class VisualPromptGallery:
                 continue
             try:
                 stat_sig = self._stat_signature(file_path)
+            except Exception:
+                continue
+            candidates.append((name, lower, file_path, stat_sig))
+
+        if not candidates:
+            return results
+
+        cached_rows = {}
+        try:
+            with self._open_hash_db(gallery_dir) as conn:
+                cached_rows = self._fetch_cached_rows(conn, [c[1] for c in candidates])
+        except Exception:
+            cached_rows = {}
+
+        to_hash = []
+        to_pixel = []
+        for name, lower, file_path, stat_sig in candidates:
+            row = cached_rows.get(lower)
+            if (
+                row
+                and row["size"] == stat_sig[0]
+                and row["mtime_ns"] == stat_sig[1]
+                and row["hash"]
+            ):
+                results[name] = {"file_hash": row["hash"], "pixel_hash": row["pixel_hash"]}
+                if not row["pixel_hash"]:
+                    to_pixel.append((name, lower, file_path, stat_sig, row["hash"]))
+            else:
+                to_hash.append((name, lower, file_path, stat_sig))
+
+        updates = []
+        for name, lower, file_path, stat_sig in to_hash:
+            try:
                 img_hash = self._hash_file_streamed(file_path)
-                bucket = index.setdefault("hashes", {}).setdefault(img_hash, [])
-                if name not in bucket:
-                    bucket.append(name)
-                name_map[lower] = img_hash
-                files = index.setdefault("files", {})
-                files[lower] = {
-                    "hash": img_hash,
-                    "size": stat_sig[0],
-                    "mtime_ns": stat_sig[1],
-                    "name": name,
-                }
-                dirty = True
+                pixel_hash = self._hash_image_pixels(file_path)
+                results[name] = {"file_hash": img_hash, "pixel_hash": pixel_hash}
+                updates.append((lower, name, img_hash, pixel_hash, stat_sig[0], stat_sig[1]))
             except Exception:
                 continue
 
-        if dirty:
-            self._save_hash_index(index_path, index)
-        return index, name_map
+        pixel_updates = []
+        for name, lower, file_path, stat_sig, img_hash in to_pixel:
+            try:
+                pixel_hash = self._hash_image_pixels(file_path)
+                if not pixel_hash:
+                    continue
+                results[name] = {"file_hash": img_hash, "pixel_hash": pixel_hash}
+                pixel_updates.append((pixel_hash, lower))
+            except Exception:
+                continue
+
+        if updates:
+            try:
+                with self._open_hash_db(gallery_dir) as conn:
+                    for chunk in self._chunked(updates, 200):
+                        conn.execute("BEGIN IMMEDIATE")
+                        conn.executemany(
+                            """
+                            INSERT INTO file_hashes (name_lower, name, hash, pixel_hash, size, mtime_ns)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(name_lower) DO UPDATE SET
+                                name = excluded.name,
+                                hash = excluded.hash,
+                                pixel_hash = excluded.pixel_hash,
+                                size = excluded.size,
+                                mtime_ns = excluded.mtime_ns
+                            """,
+                            chunk,
+                        )
+                        conn.commit()
+            except Exception:
+                pass
+        if pixel_updates:
+            try:
+                with self._open_hash_db(gallery_dir) as conn:
+                    for chunk in self._chunked(pixel_updates, 200):
+                        conn.execute("BEGIN IMMEDIATE")
+                        conn.executemany(
+                            "UPDATE file_hashes SET pixel_hash = ? WHERE name_lower = ?",
+                            chunk,
+                        )
+                        conn.commit()
+            except Exception:
+                pass
+        return results
+
+    def get_hashes_for_file_hashes(self, gallery_dir: str, file_hashes) -> dict:
+        if not file_hashes:
+            return {}
+        safe_hashes = []
+        for value in file_hashes:
+            if not isinstance(value, str) or not value:
+                continue
+            safe_hashes.append(value)
+        if not safe_hashes:
+            return {}
+        results = {}
+        try:
+            with self._open_hash_db(gallery_dir) as conn:
+                for chunk in self._chunked(safe_hashes, 200):
+                    placeholders = ",".join("?" for _ in chunk)
+                    query = f"SELECT hash, pixel_hash, name FROM file_hashes WHERE hash IN ({placeholders})"
+                    for row in conn.execute(query, chunk):
+                        img_hash = row["hash"]
+                        if not img_hash:
+                            continue
+                        entry = results.get(img_hash)
+                        if not entry:
+                            entry = {"pixel_hash": row["pixel_hash"], "names": []}
+                            results[img_hash] = entry
+                        if row["pixel_hash"] and not entry.get("pixel_hash"):
+                            entry["pixel_hash"] = row["pixel_hash"]
+                        name = row["name"]
+                        if name and name not in entry["names"]:
+                            entry["names"].append(name)
+        except Exception:
+            return results
+        return results
 
     @classmethod
     def INPUT_TYPES(s):

@@ -29,7 +29,7 @@ LOG_PREFIX = "[MAD-NODES-OPS]"
 
 
 UI_CONFIG = {
-    "config_version": "1.2.4",
+    "config_version": "1.2.5",
     "BLOCK_ORDER": [
         "clip",
         "input",

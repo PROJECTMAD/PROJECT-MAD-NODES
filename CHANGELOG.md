@@ -2,6 +2,18 @@
 
 All major and minor version changes will be documented in this file.
 
+## [1.2.5] - 2026-04-01
+### Added
+- **Visual Prompt Gallery:**
+  - SQLite database, replacing previous JSON storage file.
+  - Image upload by file path. (shares same section as URL upload)
+
+### Fixed
+- **Visual Prompt Gallery:**
+  - Performance improvements to the gallery drawing logic.
+  - Performance improvements to the hash indexing and deduplication logic.
+  - Fixed issue with scrollbar going crazy when losing focus while dragging.
+
 ## [1.2.4] - 2026-03-19
 ### Added
 - **Multi Scheduler LoRA Loader:**

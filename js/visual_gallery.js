@@ -381,14 +381,32 @@ app.registerExtension({
                     const config = getViewConfig();
                     const minCol = config.minWidthPx || 120;
                     const ratio = config.ratioValue || 1;
-                    const cols = Math.max(1, Math.floor((content.w + GAP) / (minCol + GAP)));
-                    const colW = Math.max(1, (content.w - GAP * (cols - 1)) / cols);
-                    const rowH = Math.max(1, colW / ratio);
-                    const rows = Math.ceil(total / cols);
-                    const rowSpan = rowH + GAP;
-                    const colSpan = colW + GAP;
-                    const totalHeight = rows * rowH + GAP * Math.max(0, rows - 1);
-                    const maxScroll = Math.max(0, totalHeight - content.h);
+                    const sbW = 6;
+                    const sbGap = 8;
+                    const computeLayout = (width) => {
+                        const cols = Math.max(1, Math.floor((width + GAP) / (minCol + GAP)));
+                        const colW = Math.max(1, (width - GAP * (cols - 1)) / cols);
+                        const rowH = Math.max(1, colW / ratio);
+                        const rows = Math.ceil(total / cols);
+                        const rowSpan = rowH + GAP;
+                        const colSpan = colW + GAP;
+                        const totalHeight = rows * rowH + GAP * Math.max(0, rows - 1);
+                        const maxScroll = Math.max(0, totalHeight - content.h);
+                        return { width, cols, colW, rowH, rows, rowSpan, colSpan, totalHeight, maxScroll };
+                    };
+
+                    let layout = computeLayout(content.w);
+                    if (layout.maxScroll > 0) {
+                        layout = computeLayout(Math.max(1, content.w - sbW - sbGap));
+                    }
+                    const cols = layout.cols;
+                    const colW = layout.colW;
+                    const rowH = layout.rowH;
+                    const rows = layout.rows;
+                    const rowSpan = layout.rowSpan;
+                    const colSpan = layout.colSpan;
+                    const totalHeight = layout.totalHeight;
+                    const maxScroll = layout.maxScroll;
                     this._galleryScrollY = Math.max(0, Math.min(this._galleryScrollY, maxScroll));
 
                     const startRow = Math.max(0, Math.floor(this._galleryScrollY / rowSpan) - 1);
@@ -443,14 +461,27 @@ app.registerExtension({
                         }
                     }
 
-                    this._lastLayout = { content, cols, colW, rowH, rowSpan, colSpan, total, rows, totalHeight };
+                    this._lastLayout = {
+                        content,
+                        cols,
+                        colW,
+                        rowH,
+                        rowSpan,
+                        colSpan,
+                        total,
+                        rows,
+                        totalHeight,
+                        width: layout.width,
+                        sbW,
+                        sbGap,
+                        sbX: content.x + layout.width + sbGap,
+                    };
 
                     if (maxScroll > 0) {
-                        const sbW = 6;
                         const sbH = content.h;
                         const thumbH = Math.max(20, (content.h / totalHeight) * sbH);
                         const thumbY = content.y + (this._galleryScrollY / maxScroll) * (sbH - thumbH);
-                        const sbX = content.x + content.w - sbW;
+                        const sbX = content.x + layout.width + sbGap;
 
                         ctx.fillStyle = "rgba(20, 20, 20, 0.5)";
                         ctx.fillRect(sbX, content.y, sbW, sbH);
@@ -540,9 +571,9 @@ app.registerExtension({
 
                     const maxScroll = Math.max(0, layout.totalHeight - content.h);
                     if (maxScroll > 0) {
-                        const sbW = 10;
-                        const sbX = content.x + content.w - sbW;
-                        if (pos[0] >= sbX && pos[0] <= content.x + content.w) {
+                        const sbW = layout.sbW || 6;
+                        const sbX = layout.sbX ?? (content.x + content.w - sbW);
+                        if (pos[0] >= sbX && pos[0] <= sbX + sbW) {
                             this._isDraggingScrollbar = true;
                             this._scrollDragStartY = pos[1];
                             this._scrollDragStartScrollY = this._galleryScrollY;
@@ -644,6 +675,10 @@ app.registerExtension({
                     }
                     
                     if (this._isDraggingScrollbar) {
+                        if (e && typeof e.buttons === "number" && e.buttons === 0) {
+                            this._isDraggingScrollbar = false;
+                            return true;
+                        }
                         const maxScroll = Math.max(0, layout.totalHeight - layout.content.h);
                         const sbH = layout.content.h;
                         const thumbH = Math.max(20, (layout.content.h / layout.totalHeight) * sbH);
@@ -719,6 +754,9 @@ app.registerExtension({
                     if (originalOnMouseUp) originalOnMouseUp.apply(this, arguments);
                     if (this._isDraggingScrollbar) {
                         this._isDraggingScrollbar = false;
+                        if (graphcanvas && graphcanvas.node_captured === this) {
+                            graphcanvas.node_captured = null;
+                        }
                         return true;
                     }
                 };
@@ -843,6 +881,18 @@ app.registerExtension({
                     }
                 };
 
+                this._hashFileBytes = async (file) => {
+                    if (!file || !window.crypto?.subtle) return null;
+                    try {
+                        const buffer = await file.arrayBuffer();
+                        const digest = await window.crypto.subtle.digest("SHA-256", buffer);
+                        const hashArray = Array.from(new Uint8Array(digest));
+                        return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+                    } catch (e) {
+                        return null;
+                    }
+                };
+
                 this._getGalleryHashMap = async () => {
                     const names = (this.storedImages || []).map((i) => i?.name).filter(Boolean);
                     const key = names.join("|");
@@ -866,8 +916,15 @@ app.registerExtension({
                         const data = await resp.json();
                         const map = new Map();
                         const hashes = data?.hashes || {};
-                        for (const [name, hash] of Object.entries(hashes)) {
-                            if (name && hash) map.set(name, hash);
+                        for (const [name, entry] of Object.entries(hashes)) {
+                            if (!name || !entry) continue;
+                            let pixelHash = "";
+                            if (typeof entry === "string") {
+                                pixelHash = entry;
+                            } else {
+                                pixelHash = entry?.pixel_hash || entry?.pixelHash || entry?.file_hash || entry?.hash || "";
+                            }
+                            if (pixelHash) map.set(name, pixelHash);
                         }
                         this._galleryHashCache = map;
                         this._galleryHashCacheKey = key;
@@ -901,10 +958,11 @@ app.registerExtension({
 
                 this.uploadAndProcessFiles = async (files) => {
                     const list = Array.from(files || []);
-                    if (list.length === 0) return { uploaded: 0, failed: 0, skippedDuplicates: 0, skippedInvalid: 0 };
+                    if (list.length === 0) return { uploaded: 0, failed: 0, skippedDuplicates: 0, skippedInvalid: 0, reused: 0 };
                     const existingNames = this._getExistingNameSet();
                     const existingHashMap = await this._getGalleryHashMap();
                     const existingHashes = new Set(existingHashMap ? existingHashMap.values() : []);
+                    const seenFileHashes = new Set();
                     const seen = new Set();
                     const unique = [];
                     let skippedDuplicates = 0;
@@ -920,29 +978,93 @@ app.registerExtension({
                         this._setProcessingStatus(`${label} ${processed}/${total}`);
                     };
 
+                    const fileHashEntries = [];
                     for (let i = 0; i < list.length; i++) {
-                        let file = list[i];
+                        const file = list[i];
                         if (!file) continue;
-                        let name = (file.name || "").trim();
+                        const name = (file.name || "").trim();
                         const type = file.type || "";
-                        const nameParts = splitName(name);
-                        const ext = nameParts.ext || getExtFromType(type);
                         if (!name && !type.startsWith("image/")) {
                             skippedInvalid += 1;
                             processed += 1;
                             updateStatus("Processing images");
                             continue;
                         }
-
-                        const hash = await this._hashImagePixels(file);
-                        if (!hash) {
+                        const fileHash = await this._hashFileBytes(file);
+                        if (!fileHash) {
                             skippedInvalid += 1;
                             processed += 1;
                             updateStatus("Processing images");
                             continue;
                         }
+                        if (seenFileHashes.has(fileHash)) {
+                            skippedDuplicates += 1;
+                            processed += 1;
+                            updateStatus("Processing images");
+                            continue;
+                        }
+                        seenFileHashes.add(fileHash);
+                        fileHashEntries.push({ file, fileHash });
                         processed += 1;
                         updateStatus("Processing images");
+                    }
+
+                    let existingFileHashes = new Set();
+                    let existingFileHashInfo = {};
+                    if (fileHashEntries.length > 0) {
+                        try {
+                            const resp = await api.fetchApi("/mad-nodes/vpg-hash-lookup-file-hash", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ hashes: Array.from(seenFileHashes) }),
+                            });
+                            if (resp && resp.status === 200) {
+                                const data = await resp.json();
+                                const found = data?.hashes || {};
+                                existingFileHashInfo = found || {};
+                                existingFileHashes = new Set(Object.keys(existingFileHashInfo));
+                            }
+                        } catch (e) {}
+                    }
+
+                    let reused = 0;
+                    for (let i = 0; i < fileHashEntries.length; i++) {
+                        let file = fileHashEntries[i].file;
+                        const fileHash = fileHashEntries[i].fileHash;
+                        if (existingFileHashes.has(fileHash)) {
+                            const info = existingFileHashInfo[fileHash];
+                            const names = Array.isArray(info?.names) ? info.names : [];
+                            const pixelHash = info?.pixel_hash || "";
+                            let targetName = (file.name || "").trim();
+                            if (names.length > 0 && (!targetName || !names.includes(targetName))) {
+                                targetName = names[0];
+                            }
+                            if (targetName) {
+                                const already = this.storedImages.find((i) => i?.name === targetName);
+                                if (!already) {
+                                    this.addThumbnail({ name: targetName, subfolder: "visual_gallery", type: "input" });
+                                    existingNames.add(targetName.toLowerCase());
+                                    reused += 1;
+                                }
+                                if (this._galleryHashCache && pixelHash) {
+                                    this._galleryHashCache.set(targetName, pixelHash);
+                                }
+                                if (pixelHash) existingHashes.add(pixelHash);
+                            } else {
+                                skippedDuplicates += 1;
+                            }
+                            continue;
+                        }
+                        let name = (file.name || "").trim();
+                        const type = file.type || "";
+                        const nameParts = splitName(name);
+                        const ext = nameParts.ext || getExtFromType(type);
+
+                        const hash = await this._hashImagePixels(file);
+                        if (!hash) {
+                            skippedInvalid += 1;
+                            continue;
+                        }
 
                         if (seen.has(hash) || existingHashes.has(hash)) {
                             skippedDuplicates += 1;
@@ -965,8 +1087,9 @@ app.registerExtension({
                     }
 
                     if (unique.length === 0) {
+                        this.saveState();
                         this._setProcessingStatus("");
-                        return { uploaded: 0, failed: 0, skippedDuplicates, skippedInvalid };
+                        return { uploaded: 0, failed: 0, skippedDuplicates, skippedInvalid, reused };
                     }
 
                     this.showPlaceholder(false);
@@ -1003,6 +1126,7 @@ app.registerExtension({
                                         body: JSON.stringify({
                                             filename: data?.name || file?.name || "",
                                             subfolder: data?.subfolder || "visual_gallery",
+                                            pixel_hash: item.hash || "",
                                         }),
                                     });
                                 } catch (e) {}
@@ -1019,7 +1143,7 @@ app.registerExtension({
                     }
                     this.saveState();
                     this._setProcessingStatus("");
-                    return { uploaded, failed, skippedDuplicates, skippedInvalid };
+                    return { uploaded, failed, skippedDuplicates, skippedInvalid, reused };
                 };
 
                 this.openUploadDialog = () => {
@@ -1080,6 +1204,7 @@ app.registerExtension({
                         const result = await this.uploadAndProcessFiles(files);
                         const parts = [];
                         if (result.uploaded) parts.push(`Uploaded ${result.uploaded}`);
+                        if (result.reused) parts.push(`Reused ${result.reused}`);
                         if (result.skippedDuplicates) parts.push(`Skipped ${result.skippedDuplicates} duplicates`);
                         if (result.skippedInvalid) parts.push(`Ignored ${result.skippedInvalid} invalid`);
                         if (result.failed) parts.push(`Failed ${result.failed}`);
@@ -1091,16 +1216,38 @@ app.registerExtension({
 
                     const sectionUrls = document.createElement("div");
                     sectionUrls.className = "mad-gallery-upload-section";
-                    sectionUrls.innerHTML = "<div class=\"mad-gallery-upload-title\">Upload via URLs</div>";
+                    sectionUrls.innerHTML = "<div class=\"mad-gallery-upload-title\">Upload via URLs or File Paths</div>";
 
                     const urlInput = document.createElement("textarea");
                     urlInput.className = "mad-gallery-upload-textarea";
-                    urlInput.placeholder = "One image URL per line";
+                    urlInput.placeholder = "One per line:\nhttps://example.com/image.jpg\nfile:///C:/images/image.jpg";
 
                     const urlBtn = document.createElement("button");
                     urlBtn.className = "mad-gallery-upload-btn";
                     urlBtn.innerText = "Upload URLs";
 
+                    const isHttpUrl = (raw) => /^https?:\/\//i.test(raw || "");
+                    const isFileUrl = (raw) => /^file:\/\//i.test(raw || "");
+                    const normalizeFilePath = (raw) => {
+                        if (!raw) return "";
+                        if (!isFileUrl(raw)) return raw;
+                        try {
+                            const u = new URL(raw);
+                            let path = decodeURIComponent(u.pathname || "");
+                            if (path.startsWith("/") && /^[a-zA-Z]:/.test(path.slice(1))) {
+                                path = path.slice(1);
+                            }
+                            return path || raw;
+                        } catch (e) {
+                            return raw.replace(/^file:\/\//i, "");
+                        }
+                    };
+                    const filenameFromPath = (raw) => {
+                        if (!raw) return "";
+                        const cleaned = normalizeFilePath(raw).replace(/[\\/]+$/, "");
+                        const parts = cleaned.split(/[\\/]/);
+                        return parts[parts.length - 1] || "";
+                    };
                     const filenameFromUrl = (raw) => {
                         try {
                             const u = new URL(raw);
@@ -1111,14 +1258,14 @@ app.registerExtension({
                         }
                     };
 
-                    const uploadFromUrls = async (urls) => {
+                    const uploadFromSources = async (sources) => {
                         const existingNames = this._getExistingNameSet();
                         const files = [];
                         let skippedDuplicates = 0;
                         let skippedInvalid = 0;
                         let failed = 0;
                         let downloaded = 0;
-                        const total = urls.length;
+                        const total = sources.length;
                         const updateDownloadStatus = () => {
                             const text = `Downloading ${downloaded}/${total}`;
                             setStatus(text, "info");
@@ -1126,10 +1273,12 @@ app.registerExtension({
                         };
                         updateDownloadStatus();
 
-                        for (let i = 0; i < urls.length; i++) {
-                            const raw = urls[i];
+                        for (let i = 0; i < sources.length; i++) {
+                            const raw = sources[i];
                             if (!raw) continue;
-                            let fileName = filenameFromUrl(raw);
+                            const isUrl = isHttpUrl(raw);
+                            const filePath = isUrl ? "" : normalizeFilePath(raw);
+                            let fileName = isUrl ? filenameFromUrl(raw) : filenameFromPath(filePath);
                             if (fileName) fileName = fileName.split("?")[0].split("#")[0];
 
                             if (fileName && existingNames.has(fileName.toLowerCase())) {
@@ -1139,7 +1288,17 @@ app.registerExtension({
 
                             let resp;
                             try {
-                                resp = await fetch(raw, { mode: "cors" });
+                                if (isUrl) {
+                                    resp = await fetch(raw, { mode: "cors" });
+                                } else {
+                                    resp = await api.fetchApi("/mad-nodes/vpg-load-file", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ path: filePath }),
+                                    });
+                                    const headerName = resp?.headers?.get("X-File-Name");
+                                    if (headerName) fileName = headerName;
+                                }
                             } catch (err) {
                                 failed += 1;
                                 downloaded += 1;
@@ -1201,13 +1360,14 @@ app.registerExtension({
                             .map((l) => l.trim())
                             .filter(Boolean);
                         if (lines.length === 0) {
-                            setStatus("Paste one or more image URLs first.", "warn");
+                            setStatus("Paste one or more image URLs or file paths first.", "warn");
                             return;
                         }
-                        setStatus("Checking URLs...", "info");
-                        const result = await uploadFromUrls(lines);
+                        setStatus("Checking sources...", "info");
+                        const result = await uploadFromSources(lines);
                         const parts = [];
                         if (result.uploaded) parts.push(`Uploaded ${result.uploaded}`);
+                        if (result.reused) parts.push(`Reused ${result.reused}`);
                         if (result.skippedDuplicates) parts.push(`Skipped ${result.skippedDuplicates} duplicates`);
                         if (result.skippedInvalid) parts.push(`Ignored ${result.skippedInvalid} invalid`);
                         if (result.failed) parts.push(`Failed ${result.failed}`);
@@ -1250,6 +1410,7 @@ app.registerExtension({
                         const result = await this.uploadAndProcessFiles(normalized);
                         const parts = [];
                         if (result.uploaded) parts.push(`Uploaded ${result.uploaded}`);
+                        if (result.reused) parts.push(`Reused ${result.reused}`);
                         if (result.skippedDuplicates) parts.push(`Skipped ${result.skippedDuplicates} duplicates`);
                         if (result.skippedInvalid) parts.push(`Ignored ${result.skippedInvalid} invalid`);
                         if (result.failed) parts.push(`Failed ${result.failed}`);
